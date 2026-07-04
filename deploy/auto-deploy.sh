@@ -17,7 +17,7 @@ REMOTE="$(git rev-parse origin/main)"
 [ "$LOCAL" = "$REMOTE" ] && exit 0   # already up to date
 
 echo "$(date -Is) new deployment ${LOCAL:0:7} -> ${REMOTE:0:7}"
-git pull --ff-only origin main
+git reset --hard origin/main    # deploy target: force-match remote (handles local drift)
 npm install --no-audit --no-fund
 # If Playwright itself was upgraded you may also need: npx playwright install chromium
 systemctl --user restart buildinglink-panel.service

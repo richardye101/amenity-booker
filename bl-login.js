@@ -23,33 +23,39 @@ const onAuth = (url) => {
 
 // Fill & submit the login form if we're on the auth page and creds exist.
 // Returns 'submitted' | 'no-creds' | 'not-login' | 'error:<msg>'.
+// NOTE: the auth page renders TWO forms with the same field names — a hidden
+// #form--mobile and the visible desktop form — so we must target the VISIBLE
+// inputs, and submit with Enter (the desktop submit is an ASP.NET control, not
+// a plain type=submit button).
 async function autoLogin(page, log = () => {}) {
   if (!onAuth(page.url())) return 'not-login';
   const user = process.env.BL_USERNAME;
   const pass = process.env.BL_PASSWORD;
   if (!user || !pass) return 'no-creds';
   try {
-    // Single-page form: #UserName + #Password + #LoginButton ("Next").
-    if (await page.locator('#UserName').count()) {
-      await page.fill('#UserName', user);
-    }
-    if (await page.locator('#Password').count()) {
-      await page.fill('#Password', pass);
-    }
+    const u = page.locator('input[name="Username"]:visible').first();
+    const pw = page.locator('input[name="Password"]:visible').first();
+    await u.waitFor({ state: 'visible', timeout: 20000 });
+    await u.fill(user);
+    await pw.fill(pass);
     log('auto-login: submitting credentials...');
     await Promise.all([
       page.waitForLoadState('domcontentloaded').catch(() => {}),
-      page.click('#LoginButton, button[type=submit]').catch(() => {}),
+      pw.press('Enter'),
     ]);
-    await page.waitForTimeout(2000);
-    // Two-step variant: password appears on a second screen.
-    if (onAuth(page.url()) && (await page.locator('#Password').count()) && !(await page.locator('#UserName').count())) {
-      await page.fill('#Password', pass);
-      await Promise.all([
-        page.waitForLoadState('domcontentloaded').catch(() => {}),
-        page.click('#LoginButton, button[type=submit]').catch(() => {}),
-      ]);
-      await page.waitForTimeout(2000);
+    await page.waitForTimeout(2500);
+    // Fallback: if still on the auth page, click a visible login button (avoid
+    // the separate "Single Sign-on" link).
+    if (onAuth(page.url())) {
+      const btn = page.locator('button:visible, input[type=submit]:visible, a:visible')
+        .filter({ hasText: /log ?in|login|sign in|submit/i }).first();
+      if (await btn.count()) {
+        await Promise.all([
+          page.waitForLoadState('domcontentloaded').catch(() => {}),
+          btn.click().catch(() => {}),
+        ]);
+        await page.waitForTimeout(2500);
+      }
     }
     return 'submitted';
   } catch (e) {
