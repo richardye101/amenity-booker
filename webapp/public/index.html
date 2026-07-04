@@ -8,7 +8,12 @@
   :root { --bg:#0f1720; --card:#18232f; --ink:#e6edf3; --mut:#8aa0b3; --acc:#2ea043; --accf:#238636; --warn:#d29922; --err:#f85149; --line:#26333f; }
   * { box-sizing: border-box; }
   body { margin:0; font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; background:var(--bg); color:var(--ink); }
-  .wrap { max-width:860px; margin:0 auto; padding:24px 18px 60px; }
+  .wrap { max-width:1180px; margin:0 auto; padding:24px 18px 60px; }
+  .grid2 { display:grid; grid-template-columns: 2fr 1fr; gap:16px; align-items:start; }
+  .col-main, .col-side { min-width:0; }
+  @media (max-width: 900px){ .grid2 { grid-template-columns:1fr; } }
+  .cardhead { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+  .cardhead h2 { margin:0; }
   h1 { font-size:22px; margin:0 0 4px; }
   .sub { color:var(--mut); margin:0 0 20px; font-size:13px; }
   .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:18px; margin-bottom:16px; }
@@ -53,60 +58,59 @@
   <p class="sub">Harbour View Estates II — warms a logged-in browser and fires at your chosen time.</p>
   <div id="banner" class="banner"></div>
 
-  <div class="card">
-    <h2>1 · Server session</h2>
-    <div class="row" style="align-items:center">
-      <div style="flex:2">
-        <span id="sessDot" class="dot unknown"></span><span id="sessText" style="font-weight:600">Unknown</span>
-        <div class="hint" id="sessWhen"></div>
-      </div>
-      <div style="flex:0 0 auto"><button class="sec" id="loginBtn" onclick="refreshSession()">Refresh</button></div>
-    </div>
-  </div>
+  <div class="grid2">
+   <div class="col-main">
 
-  <div class="card">
-    <div class="row" style="align-items:center">
-      <div style="flex:2"><h2 style="margin:0">My upcoming reservations</h2></div>
-      <div style="flex:0 0 auto"><button class="sec" id="mineBtn" onclick="refreshMine()">Refresh</button></div>
+    <div class="card">
+      <div class="cardhead">
+        <div><span id="sessDot" class="dot unknown"></span><span id="sessText" style="font-weight:600">Unknown</span>
+          <div class="hint" id="sessWhen"></div></div>
+        <button class="sec" id="loginBtn" onclick="refreshSession()">Refresh</button>
+      </div>
     </div>
-    <div id="mineList" style="margin-top:12px"><span class="muted">Loading…</span></div>
-  </div>
 
-  <div class="card">
-    <h2>2 · Reservation</h2>
-    <div class="row">
-      <div>
-        <label>Amenity</label>
-        <select id="amenity"></select>
-      </div>
-      <div id="customWrap" style="display:none">
-        <label>Custom amenityId</label>
-        <input id="customId" placeholder="e.g. 37908" />
-      </div>
-      <div>
-        <label>Date</label>
-        <input type="date" id="date" />
-      </div>
+    <div class="card">
+      <div class="cardhead"><h2>My reservations</h2><button class="sec" id="mineBtn" onclick="refreshMine()">Refresh</button></div>
+      <div id="mineList" style="margin-top:12px"><span class="muted">Loading…</span></div>
     </div>
-    <div class="row" style="margin-top:12px">
-      <div><label>Start</label><select id="start"></select></div>
-      <div><label>End</label><select id="end"></select></div>
-    </div>
-    <div style="margin-top:14px">
-      <div class="chk"><input type="checkbox" id="fbOn" /><label for="fbOn">Fallback slot if the first is taken</label></div>
-      <div class="row" id="fbRow" style="display:none">
-        <div><label>Fallback start</label><select id="fbStart"></select></div>
-        <div><label>Fallback end</label><select id="fbEnd"></select></div>
-      </div>
-    </div>
-    <div id="amInfo" class="hint" style="margin-top:12px"></div>
-  </div>
 
-  <div class="card">
-    <h2>3 · When to fire</h2>
-    <div class="row">
-      <div>
-        <label>Timing</label>
+    <div class="card">
+      <div class="cardhead"><h2>Amenity availability</h2><button class="sec" id="occBtn" onclick="checkOccupancy()">Check</button></div>
+      <div style="margin-top:10px"><label>Amenity</label><select id="occAmenity"></select></div>
+      <div id="occInfo" class="hint" style="margin-top:8px"></div>
+      <div id="occList" style="margin-top:10px"><span class="muted">Pick an amenity and click Check to see what's already booked.</span></div>
+    </div>
+
+    <div class="card">
+      <h2>Status</h2>
+      <div id="status"><span class="muted">No activity yet.</span></div>
+    </div>
+
+   </div>
+   <div class="col-side">
+
+    <div class="card">
+      <h2>Book a slot</h2>
+      <div><label>Amenity</label><select id="amenity"></select></div>
+      <div id="customWrap" style="display:none;margin-top:10px"><label>Custom amenityId</label><input id="customId" placeholder="e.g. 37908" /></div>
+      <div style="margin-top:10px"><label>Date</label><input type="date" id="date" /></div>
+      <div class="row" style="margin-top:10px">
+        <div><label>Start</label><select id="start"></select></div>
+        <div><label>End</label><select id="end"></select></div>
+      </div>
+      <div style="margin-top:12px">
+        <div class="chk"><input type="checkbox" id="fbOn" /><label for="fbOn">Fallback slot if taken</label></div>
+        <div class="row" id="fbRow" style="display:none">
+          <div><label>Fallback start</label><select id="fbStart"></select></div>
+          <div><label>Fallback end</label><select id="fbEnd"></select></div>
+        </div>
+      </div>
+      <div id="amInfo" class="hint" style="margin-top:12px"></div>
+    </div>
+
+    <div class="card">
+      <h2>When to fire</h2>
+      <div><label>Timing</label>
         <select id="fireMode">
           <option value="auto">When this slot opens (auto)</option>
           <option value="midnight">At next midnight</option>
@@ -114,20 +118,14 @@
           <option value="at">Specific time…</option>
         </select>
       </div>
-      <div id="fireAtWrap" style="display:none">
-        <label>Fire at</label>
-        <input type="datetime-local" id="fireAt" />
-      </div>
+      <div id="fireAtWrap" style="display:none;margin-top:10px"><label>Fire at</label><input type="datetime-local" id="fireAt" /></div>
+      <div class="chk" style="margin-top:12px"><input type="checkbox" id="dryRun" /><label for="dryRun">Dry run (don't click Save)</label></div>
+      <div id="openInfo" class="hint" style="margin-top:10px"></div>
+      <div class="hint">A browser window opens and holds until it fires. Only one booking can be armed at a time.</div>
+      <div style="margin-top:14px"><button id="armBtn" onclick="arm()">Arm booking</button></div>
     </div>
-    <div class="chk" style="margin-top:12px"><input type="checkbox" id="dryRun" /><label for="dryRun">Dry run (fill everything but don't click Save)</label></div>
-    <div id="openInfo" class="hint" style="margin-top:10px"></div>
-    <div class="hint">A browser window will open and stay open until it fires — keep your Mac awake (plugged in). Only one booking can be armed at a time.</div>
-    <div style="margin-top:14px"><button id="armBtn" onclick="arm()">Arm booking</button></div>
-  </div>
 
-  <div class="card">
-    <h2>Status</h2>
-    <div id="status"><span class="muted">No jobs yet.</span></div>
+   </div>
   </div>
 </div>
 
@@ -149,7 +147,11 @@ async function loadAmenities(){
   const sel = $('amenity');
   sel.innerHTML = amenities.map(a=>`<option value="${a.id}">${a.name} (#${a.id})</option>`).join('') + '<option value="custom">Custom amenityId…</option>';
   sel.onchange = ()=>{ $('customWrap').style.display = sel.value==='custom' ? '' : 'none'; updateInfo(); };
-  updateInfo();
+  const occ = $('occAmenity');
+  occ.innerHTML = amenities.map(a=>`<option value="${a.id}">${a.name}</option>`).join('');
+  occ.value = sel.value;
+  occ.onchange = ()=>{ occInfoText(); loadOcc(); };
+  updateInfo(); occInfoText(); loadOcc();
 }
 function selectedMeta(){ const a = AMS.find(x=>x.id===$('amenity').value); return a ? a.meta : null; }
 function computeOpen(){
@@ -217,8 +219,7 @@ async function refreshSession(){
 async function loadMine(){
   try{
     const { updatedAt, reservations } = await api('/api/reservations/mine');
-    const now = Date.now();
-    const up = (reservations||[]).filter(r => !r.startsAt || r.startsAt >= now - 3600000);
+    const up = reservations || [];   // show everything BuildingLink lists (it only shows active ones)
     const stamp = updatedAt ? `<div class="hint">updated ${new Date(updatedAt).toLocaleString()}</div>` : '';
     if(!up.length){ $('mineList').innerHTML = `<span class="muted">No upcoming reservations.</span>${stamp}`; return; }
     $('mineList').innerHTML = up.map(r => {
@@ -229,6 +230,43 @@ async function loadMine(){
 }
 async function refreshMine(){
   try{ await api('/api/reservations/refresh','POST'); banner('Fetching your reservations…','ok'); refresh(); }
+  catch(e){ banner(e.message,'err'); }
+}
+
+// ---- amenity availability (what's already booked) ----
+function occMeta(){ const a = AMS.find(x=>x.id===$('occAmenity').value); return a?a.meta:null; }
+function occHorizonDays(){
+  const meta = occMeta();
+  if(!meta) return 14;
+  if(meta.ruleType==='fixed' && typeof meta.offsetDays==='number') return Math.max(1, Math.min(14, meta.offsetDays+1));
+  if(meta.ruleType==='week') return Math.max(1, Math.min(14, 7 - new Date().getDay()));
+  return 14;
+}
+function occInfoText(){
+  const a = AMS.find(x=>x.id===$('occAmenity').value);
+  const days = occHorizonDays();
+  $('occInfo').textContent = a ? `Showing the next ${days} day(s) — the furthest you can book ${a.name}.` : '';
+}
+function renderOcc(data){
+  const el = $('occList');
+  if(!data || !data.days || !data.days.length){ el.innerHTML = '<span class="muted">No data yet — click Check.</span>'; return; }
+  el.innerHTML = data.days.map(d=>{
+    let inner;
+    if(d.error) inner = `<span class="muted">${d.error}</span>`;
+    else if(!d.busy || !d.busy.length) inner = `<span style="color:var(--acc)">✓ open</span>`;
+    else inner = d.busy.map(b=>`<span class="pill ${/request/i.test(b.status)?'armed':'failed'}">${b.start}–${b.end} ${b.status}</span>`).join(' ');
+    return `<div class="resrow"><b>${d.label}</b> &nbsp; ${inner}</div>`;
+  }).join('') + (data.generatedAt?`<div class="hint">checked ${new Date(data.generatedAt).toLocaleString()}</div>`:'');
+}
+async function loadOcc(){
+  const id = $('occAmenity').value; if(!id || id==='custom') return;
+  try{ renderOcc(await api('/api/occupancy?amenityId='+encodeURIComponent(id))); }catch(e){}
+}
+async function checkOccupancy(){
+  const a = AMS.find(x=>x.id===$('occAmenity').value);
+  if(!a){ banner('Pick a known amenity to check availability','err'); return; }
+  try{ await api('/api/occupancy/refresh','POST',{ amenityId:a.id, amenityName:a.name, days:occHorizonDays() });
+    banner(`Checking ${a.name} availability (up to ${occHorizonDays()} days)…`,'ok'); refresh(); }
   catch(e){ banner(e.message,'err'); }
 }
 async function arm(){
@@ -265,6 +303,11 @@ function jobCard(j){
     const txt = alive ? '📋 Loading your reservations…' : (j.status==='done' ? '📋 My reservations — updated ✓' : '📋 My reservations — failed ✗');
     return `<div class="card mini"><span class="muted">${txt} · ${when}</span> ${stopBtn}</div>`;
   }
+  if(j.kind==='occupancy'){
+    const nm = c.amenityName||'';
+    const txt = alive ? `📊 Checking ${nm} availability…` : (j.status==='done' ? `📊 ${nm} availability — updated ✓` : `📊 ${nm} availability — failed ✗`);
+    return `<div class="card mini"><span class="muted">${txt} · ${when}</span> ${stopBtn}</div>`;
+  }
 
   // Bookings: full card.
   const res = j.result ? (j.result.booked?('✅ '+j.result.message):('❌ '+j.result.message)) : '';
@@ -286,16 +329,12 @@ function jobCard(j){
 async function refresh(){
   try{
     const { activeId, jobs, session } = await api('/api/state');
-    $('armBtn').disabled = !!activeId;
-    $('loginBtn').disabled = !!activeId;
-    $('mineBtn').disabled = !!activeId;
+    ['armBtn','loginBtn','mineBtn','occBtn'].forEach(id=>{ const b=$(id); if(b) b.disabled = !!activeId; });
     renderSession(session);
-    loadMine();
-    // Show all bookings, plus only the most recent session-check, scan, and reservations fetch.
+    loadMine(); loadOcc();
+    // Show all bookings, plus only the most recent of each background activity.
     const show = jobs.filter(j=>j.kind==='booking');
-    const lastLogin = jobs.find(j=>j.kind==='login'); if(lastLogin) show.push(lastLogin);
-    const lastScan = jobs.find(j=>j.kind==='scan'); if(lastScan) show.push(lastScan);
-    const lastRes = jobs.find(j=>j.kind==='reservations'); if(lastRes) show.push(lastRes);
+    ['login','scan','reservations','occupancy'].forEach(k=>{ const j=jobs.find(x=>x.kind===k); if(j) show.push(j); });
     show.sort((a,b)=>(b.startedAt||'').localeCompare(a.startedAt||''));
     $('status').innerHTML = show.length ? show.map(jobCard).join('') : '<span class="muted">No activity yet.</span>';
   }catch(e){ /* ignore transient */ }
