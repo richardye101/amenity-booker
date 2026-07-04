@@ -1,0 +1,7 @@
+node_modules/
+.DS_Store
+user-data/
+run-logs/
+capture/
+webapp/jobs.json
+.env

@@ -1,0 +1,354 @@
+{
+  "29910": {
+    "name": "Movie Theater",
+    "ruleType": "week",
+    "offsetDays": null,
+    "opensRule": "current calendar week — opens Sunday 00:00",
+    "ruleLabel": "Current Week",
+    "advanceText": "Advance Limit: Reservations can be placed only for dates from today through July 4, 2026. (Current Week)",
+    "hours": "6:00 AM to 12:00 AM (on the following day)",
+    "duration": "limited to 3 hours",
+    "adEnd": [
+      2026,
+      7,
+      4
+    ],
+    "scrapedOn": "2026-07-04"
+  },
+  "29911": {
+    "name": "Party Room",
+    "ruleType": "fixed",
+    "offsetDays": 211,
+    "opensRule": "211 day(s) ahead — opens 00:00 the night it enters the window",
+    "ruleLabel": "Next 6 Months",
+    "advanceText": "Advance Limit: Reservations can be placed only for dates from today through January 31, 2027. (Next 6 Months)",
+    "hours": "6:00 AM to 12:00 AM (on the following day)",
+    "duration": null,
+    "adEnd": [
+      2027,
+      1,
+      31
+    ],
+    "scrapedOn": "2026-07-04"
+  },
+  "29916": {
+    "name": "Tennis Court",
+    "ruleType": "fixed",
+    "offsetDays": 1,
+    "opensRule": "1 day(s) ahead — opens 00:00 the night it enters the window",
+    "ruleLabel": "Current & Next Day",
+    "advanceText": "Advance Limit: Reservations can be placed only for dates from today through July 5, 2026. (Current & Next Day)",
+    "hours": "7:00 AM to 9:00 PM",
+    "duration": "limited to 1 hour",
+    "adEnd": [
+      2026,
+      7,
+      5
+    ],
+    "scrapedOn": "2026-07-04"
+  },
+  "29926": {
+    "name": "Guest Suite #103 at 9 Spadina",
+    "ruleType": "fixed",
+    "offsetDays": 26842,
+    "opensRule": "far in advance (effectively always open)",
+    "ruleLabel": null,
+    "advanceText": null,
+    "hours": "4:00 PM to 11:00 AM (on the following day)",
+    "duration": null,
+    "adEnd": [
+      2099,
+      12,
+      30
+    ],
+    "scrapedOn": "2026-07-04"
+  },
+  "29927": {
+    "name": "Guest Suite #112 at 35 Mariner Terrace",
+    "ruleType": "fixed",
+    "offsetDays": 26842,
+    "opensRule": "far in advance (effectively always open)",
+    "ruleLabel": null,
+    "advanceText": null,
+    "hours": "4:00 PM to 11:00 AM (on the following day)",
+    "duration": null,
+    "adEnd": [
+      2099,
+      12,
+      30
+    ],
+    "scrapedOn": "2026-07-04"
+  },
+  "29928": {
+    "name": "Guest Suite #113 at 35 Mariner Terrace",
+    "ruleType": "fixed",
+    "offsetDays": 26842,
+    "opensRule": "far in advance (effectively always open)",
+    "ruleLabel": null,
+    "advanceText": null,
+    "hours": "4:00 PM to 11:00 AM (on the following day)",
+    "duration": null,
+    "adEnd": [
+      2099,
+      12,
+      30
+    ],
+    "scrapedOn": "2026-07-04"
+  },
+  "29929": {
+    "name": "Guest Suite #101 at 3 Navy Wharf Court",
+    "ruleType": "fixed",
+    "offsetDays": 26842,
+    "opensRule": "far in advance (effectively always open)",
+    "ruleLabel": null,
+    "advanceText": null,
+    "hours": "4:00 PM to 11:00 AM (on the following day)",
+    "duration": null,
+    "adEnd": [
+      2099,
+      12,
+      30
+    ],
+    "scrapedOn": "2026-07-04"
+  },
+  "29930": {
+    "name": "Guest Suite #103 at 5 Mariner Terrace",
+    "ruleType": "fixed",
+    "offsetDays": 26842,
+    "opensRule": "far in advance (effectively always open)",
+    "ruleLabel": null,
+    "advanceText": null,
+    "hours": "4:00 PM to 11:00 AM (on the following day)",
+    "duration": null,
+    "adEnd": [
+      2099,
+      12,
+      30
+    ],
+    "scrapedOn": "2026-07-04"
+  },
+  "29966": {
+    "name": "Service Elevator 9AM - 1PM",
+    "ruleType": "fixed",
+    "offsetDays": 26842,
+    "opensRule": "far in advance (effectively always open)",
+    "ruleLabel": null,
+    "advanceText": null,
+    "hours": "9:00 AM to 1:00 PM",
+    "duration": null,
+    "adEnd": [
+      2099,
+      12,
+      30
+    ],
+    "scrapedOn": "2026-07-04"
+  },
+  "29967": {
+    "name": "Service Elevator 1PM - 5PM",
+    "ruleType": "fixed",
+    "offsetDays": 26842,
+    "opensRule": "far in advance (effectively always open)",
+    "ruleLabel": null,
+    "advanceText": null,
+    "hours": "1:00 PM to 5:00 PM",
+    "duration": null,
+    "adEnd": [
+      2099,
+      12,
+      30
+    ],
+    "scrapedOn": "2026-07-04"
+  },
+  "37908": {
+    "name": "BBQ2",
+    "ruleType": "fixed",
+    "offsetDays": 1,
+    "opensRule": "1 day(s) ahead — opens 00:00 the night it enters the window",
+    "ruleLabel": "Next 1 Day",
+    "advanceText": "Advance Limit: Reservations can be placed only for dates from today through July 5, 2026. (Next 1 Day)",
+    "hours": "8:00 AM to 9:00 PM",
+    "duration": "limited to 1 hour",
+    "adEnd": [
+      2026,
+      7,
+      5
+    ],
+    "scrapedOn": "2026-07-04"
+  },
+  "37909": {
+    "name": "BBQ3",
+    "ruleType": "fixed",
+    "offsetDays": 1,
+    "opensRule": "1 day(s) ahead — opens 00:00 the night it enters the window",
+    "ruleLabel": "Next 1 Day",
+    "advanceText": "Advance Limit: Reservations can be placed only for dates from today through July 5, 2026. (Next 1 Day)",
+    "hours": "8:00 AM to 9:00 PM",
+    "duration": "limited to 1 hour",
+    "adEnd": [
+      2026,
+      7,
+      5
+    ],
+    "scrapedOn": "2026-07-04"
+  },
+  "42764": {
+    "name": "BBQ4",
+    "ruleType": "fixed",
+    "offsetDays": 1,
+    "opensRule": "1 day(s) ahead — opens 00:00 the night it enters the window",
+    "ruleLabel": "Next 1 Day",
+    "advanceText": "Advance Limit: Reservations can be placed only for dates from today through July 5, 2026. (Next 1 Day)",
+    "hours": "8:00 AM to 9:00 PM",
+    "duration": "limited to 1 hour",
+    "adEnd": [
+      2026,
+      7,
+      5
+    ],
+    "scrapedOn": "2026-07-04"
+  },
+  "60511": {
+    "name": "Ping Pong Table #1",
+    "ruleType": "week",
+    "offsetDays": null,
+    "opensRule": "current calendar week — opens Sunday 00:00",
+    "ruleLabel": "Current Week",
+    "advanceText": "Advance Limit: Reservations can be placed only for dates from today through July 4, 2026. (Current Week)",
+    "hours": "6:00 AM to 12:00 AM (on the following day)",
+    "duration": "limited to 1 hour",
+    "adEnd": [
+      2026,
+      7,
+      4
+    ],
+    "scrapedOn": "2026-07-04"
+  },
+  "61230": {
+    "name": "Pool",
+    "ruleType": "week",
+    "offsetDays": null,
+    "opensRule": "current calendar week — opens Sunday 00:00",
+    "ruleLabel": "Current Week",
+    "advanceText": "Advance Limit: Reservations can be placed only for dates from today through July 4, 2026. (Current Week)",
+    "hours": "6:00 AM to 12:00 AM (on the following day)",
+    "duration": "limited to 1 hour",
+    "adEnd": [
+      2026,
+      7,
+      4
+    ],
+    "scrapedOn": "2026-07-04"
+  },
+  "61231": {
+    "name": "1st Floor Lounge & Billiards Area",
+    "ruleType": "week",
+    "offsetDays": null,
+    "opensRule": "current calendar week — opens Sunday 00:00",
+    "ruleLabel": "Current Week",
+    "advanceText": "Advance Limit: Reservations can be placed only for dates from today through July 4, 2026. (Current Week)",
+    "hours": "6:00 AM to 12:00 AM (on the following day)",
+    "duration": "limited to 1 hour",
+    "adEnd": [
+      2026,
+      7,
+      4
+    ],
+    "scrapedOn": "2026-07-04"
+  },
+  "61232": {
+    "name": "Basketball Court",
+    "ruleType": "week",
+    "offsetDays": null,
+    "opensRule": "current calendar week — opens Sunday 00:00",
+    "ruleLabel": "Current Week",
+    "advanceText": "Advance Limit: Reservations can be placed only for dates from today through July 4, 2026. (Current Week)",
+    "hours": "6:00 AM to 12:00 AM (on the following day)",
+    "duration": "limited to 1 hour",
+    "adEnd": [
+      2026,
+      7,
+      4
+    ],
+    "scrapedOn": "2026-07-04"
+  },
+  "61233": {
+    "name": "Bowling Alley",
+    "ruleType": "week",
+    "offsetDays": null,
+    "opensRule": "current calendar week — opens Sunday 00:00",
+    "ruleLabel": "Current Week",
+    "advanceText": "Advance Limit: Reservations can be placed only for dates from today through July 4, 2026. (Current Week)",
+    "hours": "6:00 AM to 12:00 AM (on the following day)",
+    "duration": "limited to 1 hour",
+    "adEnd": [
+      2026,
+      7,
+      4
+    ],
+    "scrapedOn": "2026-07-04"
+  },
+  "61234": {
+    "name": "Squash Court",
+    "ruleType": "week",
+    "offsetDays": null,
+    "opensRule": "current calendar week — opens Sunday 00:00",
+    "ruleLabel": "Current Week",
+    "advanceText": "Advance Limit: Reservations can be placed only for dates from today through July 4, 2026. (Current Week)",
+    "hours": "6:00 AM to 12:00 AM (on the following day)",
+    "duration": "limited to 1 hour",
+    "adEnd": [
+      2026,
+      7,
+      4
+    ],
+    "scrapedOn": "2026-07-04"
+  },
+  "64197": {
+    "name": "BBQ5",
+    "ruleType": "fixed",
+    "offsetDays": 1,
+    "opensRule": "1 day(s) ahead — opens 00:00 the night it enters the window",
+    "ruleLabel": "Next 1 Day",
+    "advanceText": "Advance Limit: Reservations can be placed only for dates from today through July 5, 2026. (Next 1 Day)",
+    "hours": "8:00 AM to 9:00 PM",
+    "duration": "limited to 1 hour",
+    "adEnd": [
+      2026,
+      7,
+      5
+    ],
+    "scrapedOn": "2026-07-04"
+  },
+  "64198": {
+    "name": "BBQ6",
+    "ruleType": "fixed",
+    "offsetDays": 1,
+    "opensRule": "1 day(s) ahead — opens 00:00 the night it enters the window",
+    "ruleLabel": "Next 1 Day",
+    "advanceText": "Advance Limit: Reservations can be placed only for dates from today through July 5, 2026. (Next 1 Day)",
+    "hours": "8:00 AM to 9:00 PM",
+    "duration": "limited to 1 hour",
+    "adEnd": [
+      2026,
+      7,
+      5
+    ],
+    "scrapedOn": "2026-07-04"
+  },
+  "79587": {
+    "name": "Ping Pong Table #2",
+    "ruleType": "week",
+    "offsetDays": null,
+    "opensRule": "current calendar week — opens Sunday 00:00",
+    "ruleLabel": "Current Week",
+    "advanceText": "Advance Limit: Reservations can be placed only for dates from today through July 4, 2026. (Current Week)",
+    "hours": "6:00 AM to 12:00 AM (on the following day)",
+    "duration": "limited to 1 hour",
+    "adEnd": [
+      2026,
+      7,
+      4
+    ],
+    "scrapedOn": "2026-07-04"
+  }
+}

@@ -1,0 +1,23 @@
+[Unit]
+Description=BuildingLink Booking Panel (headed browser under Xvfb)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# --- EDIT THESE for your box ---
+User=CHANGE_ME
+WorkingDirectory=/opt/buildinglink-bot
+Environment=PORT=3000
+# If node is from nvm/asdf, put its bin dir on PATH (find with: dirname $(which node))
+Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+# Run the headed browser inside a virtual display. -a picks a free display,
+# and we give it a screen big enough for the 1400x950 browser window.
+ExecStart=/usr/bin/xvfb-run -a --server-args=-screen 0 1600x1000x24 /usr/bin/npm start
+
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,20 @@
+{
+  "name": "buildinglink-bot",
+  "version": "1.0.0",
+  "description": "",
+  "main": "webapp/server.js",
+  "scripts": {
+    "start": "node webapp/server.js",
+    "panel": "node webapp/server.js",
+    "login": "node login.js",
+    "map-amenities": "node map-amenities.js",
+    "scan": "node scan-availability.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "playwright": "^1.61.1"
+  }
+}

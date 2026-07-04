@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>BuildingLink Booking Panel</title>
+<style>
+  :root { --bg:#0f1720; --card:#18232f; --ink:#e6edf3; --mut:#8aa0b3; --acc:#2ea043; --accf:#238636; --warn:#d29922; --err:#f85149; --line:#26333f; }
+  * { box-sizing: border-box; }
+  body { margin:0; font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; background:var(--bg); color:var(--ink); }
+  .wrap { max-width:860px; margin:0 auto; padding:24px 18px 60px; }
+  h1 { font-size:22px; margin:0 0 4px; }
+  .sub { color:var(--mut); margin:0 0 20px; font-size:13px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:18px; margin-bottom:16px; }
+  .card h2 { font-size:14px; text-transform:uppercase; letter-spacing:.06em; color:var(--mut); margin:0 0 14px; }
+  label { display:block; font-size:13px; color:var(--mut); margin:0 0 5px; }
+  input, select { width:100%; padding:9px 10px; background:#0d151d; border:1px solid var(--line); border-radius:8px; color:var(--ink); font-size:14px; }
+  .row { display:flex; gap:12px; flex-wrap:wrap; }
+  .row > div { flex:1; min-width:130px; }
+  .chk { display:flex; align-items:center; gap:8px; margin:2px 0; }
+  .chk input { width:auto; }
+  .chk label { margin:0; color:var(--ink); }
+  button { cursor:pointer; border:none; border-radius:8px; padding:10px 16px; font-size:14px; font-weight:600; color:#fff; background:var(--accf); }
+  button:hover { background:var(--acc); }
+  button.sec { background:#30363d; }
+  button.sec:hover { background:#3c444d; }
+  button.stop { background:#6e2b2b; }
+  button:disabled { opacity:.45; cursor:not-allowed; }
+  .pill { display:inline-block; padding:2px 9px; border-radius:20px; font-size:12px; font-weight:600; }
+  .pill.armed{background:#1b3a5b;color:#79c0ff} .pill.firing{background:#3b2f10;color:#e3b341}
+  .pill.booked{background:#12351f;color:#57d97f} .pill.failed{background:#42201f;color:#ff7b72}
+  .pill.done{background:#12351f;color:#57d97f}
+  .pill.scanning,.pill.awaiting-login,.pill.logged-in,.pill.starting{background:#1b3a5b;color:#79c0ff}
+  .muted { color:var(--mut); font-size:13px; }
+  pre { background:#0b1219; border:1px solid var(--line); border-radius:8px; padding:10px; font-size:11.5px; overflow:auto; max-height:180px; color:#b9c7d3; margin:8px 0 0; }
+  img.shot { width:100%; border:1px solid var(--line); border-radius:8px; margin-top:10px; }
+  .hint { font-size:12px; color:var(--mut); margin-top:6px; }
+  .banner { padding:9px 12px; border-radius:8px; font-size:13px; margin-bottom:12px; display:none; }
+  .banner.err { background:#42201f; color:#ff9c96; display:block; }
+  .banner.ok { background:#12351f; color:#7ee2a0; display:block; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>🎾 BuildingLink Booking Panel</h1>
+  <p class="sub">Harbour View Estates II — warms a logged-in browser and fires at your chosen time.</p>
+  <div id="banner" class="banner"></div>
+
+  <div class="card">
+    <h2>1 · Session</h2>
+    <div class="row" style="align-items:center">
+      <div style="flex:2"><span class="muted">Log into BuildingLink once — the session is reused for bookings. A browser window opens for you to sign in.</span></div>
+      <div style="flex:0 0 auto"><button class="sec" id="loginBtn" onclick="login()">Log in / refresh</button></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>2 · Reservation</h2>
+    <div class="row">
+      <div>
+        <label>Amenity</label>
+        <select id="amenity"></select>
+      </div>
+      <div id="customWrap" style="display:none">
+        <label>Custom amenityId</label>
+        <input id="customId" placeholder="e.g. 37908" />
+      </div>
+      <div>
+        <label>Date</label>
+        <input type="date" id="date" />
+      </div>
+    </div>
+    <div class="row" style="margin-top:12px">
+      <div><label>Start</label><input type="time" id="start" value="09:00" step="900" /></div>
+      <div><label>End</label><input type="time" id="end" value="10:00" step="900" /></div>
+    </div>
+    <div style="margin-top:14px">
+      <div class="chk"><input type="checkbox" id="fbOn" /><label for="fbOn">Fallback slot if the first is taken</label></div>
+      <div class="row" id="fbRow" style="display:none">
+        <div><label>Fallback start</label><input type="time" id="fbStart" value="10:00" step="900" /></div>
+        <div><label>Fallback end</label><input type="time" id="fbEnd" value="11:00" step="900" /></div>
+      </div>
+    </div>
+    <div id="amInfo" class="hint" style="margin-top:12px"></div>
+  </div>
+
+  <div class="card">
+    <h2>3 · When to fire</h2>
+    <div class="row">
+      <div>
+        <label>Timing</label>
+        <select id="fireMode">
+          <option value="auto">When this slot opens (auto)</option>
+          <option value="midnight">At next midnight</option>
+          <option value="now">Now (test)</option>
+          <option value="at">Specific time…</option>
+        </select>
+      </div>
+      <div id="fireAtWrap" style="display:none">
+        <label>Fire at</label>
+        <input type="datetime-local" id="fireAt" />
+      </div>
+    </div>
+    <div class="chk" style="margin-top:12px"><input type="checkbox" id="dryRun" /><label for="dryRun">Dry run (fill everything but don't click Save)</label></div>
+    <div id="openInfo" class="hint" style="margin-top:10px"></div>
+    <div class="hint">A browser window will open and stay open until it fires — keep your Mac awake (plugged in). Only one booking can be armed at a time.</div>
+    <div style="margin-top:14px"><button id="armBtn" onclick="arm()">Arm booking</button></div>
+  </div>
+
+  <div class="card">
+    <h2>Status</h2>
+    <div id="status"><span class="muted">No jobs yet.</span></div>
+  </div>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+function banner(msg, kind){ const b=$('banner'); b.textContent=msg; b.className='banner '+(kind||'ok'); if(msg) setTimeout(()=>{b.className='banner';}, 5000); }
+
+async function api(path, method, body){
+  const r = await fetch(path, { method: method||'GET', headers: body?{'Content-Type':'application/json'}:{}, body: body?JSON.stringify(body):undefined });
+  const j = await r.json().catch(()=>({}));
+  if(!r.ok) throw new Error(j.error || ('HTTP '+r.status));
+  return j;
+}
+
+let AMS = [];
+async function loadAmenities(){
+  const { amenities } = await api('/api/amenities');
+  AMS = amenities;
+  const sel = $('amenity');
+  sel.innerHTML = amenities.map(a=>`<option value="${a.id}">${a.name} (#${a.id})</option>`).join('') + '<option value="custom">Custom amenityId…</option>';
+  sel.onchange = ()=>{ $('customWrap').style.display = sel.value==='custom' ? '' : 'none'; updateInfo(); };
+  updateInfo();
+}
+function selectedMeta(){ const a = AMS.find(x=>x.id===$('amenity').value); return a ? a.meta : null; }
+function computeOpen(){
+  const meta = selectedMeta(); const dv = $('date').value;
+  if(!meta || !dv) return null;
+  const [Y,M,D] = dv.split('-').map(Number);
+  let open = null;
+  if(meta.ruleType==='fixed' && typeof meta.offsetDays==='number') open = new Date(Y, M-1, D - meta.offsetDays, 0,0,0,0);
+  else if(meta.ruleType==='week'){ const dow = new Date(Y, M-1, D).getDay(); open = new Date(Y, M-1, D - dow, 0,0,0,0); }
+  return open ? { open } : null;
+}
+function updateInfo(){
+  const meta = selectedMeta();
+  const info = $('amInfo');
+  if(meta){
+    const bits = [];
+    if(meta.opensRule) bits.push('📅 '+meta.opensRule+(meta.ruleLabel?(' ('+meta.ruleLabel+')'):''));
+    if(meta.hours) bits.push('🕒 '+meta.hours);
+    if(meta.duration) bits.push('⏱ '+meta.duration);
+    info.innerHTML = bits.join(' &nbsp;·&nbsp; ');
+  } else info.textContent = $('amenity').value==='custom' ? 'Custom amenity — window unknown; choose a fire time manually.' : 'No window data yet — run “npm run scan”.';
+  const oi = $('openInfo');
+  if($('fireMode').value==='auto'){
+    const c = computeOpen();
+    if(c){ oi.innerHTML = (c.open.getTime()<=Date.now())
+        ? '✅ Already open — will book immediately.'
+        : `⏰ Opens <b>${c.open.toLocaleString()}</b> — will fire then.`; }
+    else oi.textContent = 'Auto timing needs window data for this amenity; will fall back to next midnight.';
+  } else oi.textContent = '';
+}
+$('fbOn').onchange = ()=>{ $('fbRow').style.display = $('fbOn').checked ? '' : 'none'; };
+$('fireMode').onchange = ()=>{ $('fireAtWrap').style.display = $('fireMode').value==='at' ? '' : 'none'; updateInfo(); };
+$('date').onchange = updateInfo;
+
+// default date = tomorrow
+(function(){ const d=new Date(); d.setDate(d.getDate()+1); $('date').value = d.toISOString().slice(0,10); })();
+
+async function login(){
+  try{ await api('/api/login','POST'); banner('Login browser opened — sign in there. Status will update below.','ok'); refresh(); }
+  catch(e){ banner(e.message,'err'); }
+}
+async function arm(){
+  const amSel=$('amenity').value;
+  const amenityId = amSel==='custom' ? $('customId').value.trim() : amSel;
+  if(!amenityId){ banner('Enter a custom amenityId','err'); return; }
+  const body = {
+    amenityId, date: $('date').value, start: $('start').value, end: $('end').value,
+    fallbackEnabled: $('fbOn').checked, fbStart: $('fbStart').value, fbEnd: $('fbEnd').value,
+    fireMode: $('fireMode').value, fireAt: $('fireAt').value, dryRun: $('dryRun').checked,
+  };
+  try{ await api('/api/arm','POST',body); banner('Armed! A browser window is warming up. Watch status below.','ok'); refresh(); }
+  catch(e){ banner(e.message,'err'); }
+}
+async function stop(id){ try{ await api('/api/stop','POST',{id}); refresh(); }catch(e){ banner(e.message,'err'); } }
+
+function jobCard(j){
+  const c = j.config||{};
+  const res = j.result ? (j.result.booked?('✅ '+j.result.message):('❌ '+j.result.message)) : '';
+  const cd = (j.status==='armed' && j.lastCountdown) ? ` · fires in ~${j.lastCountdown}` : '';
+  const shot = j.shot ? `<img class="shot" src="/shot/${j.shot}?t=${Date.now()}" />` : '';
+  const stopBtn = j.alive ? `<button class="stop" onclick="stop('${j.id}')">Stop</button>` : '';
+  const desc = j.kind==='login' ? 'Login session'
+    : j.kind==='scan' ? `Availability scan — refreshes booking windows${c.reason?(' ('+c.reason+')'):''}`
+    : `${c.amenityName||''} · ${c.date||''} · ${c.primary||''}${c.fallback?(' (fallback '+c.fallback+')'):''}${c.dryRun?' · DRY':''}<br><span class="muted">fire: ${c.fire||''}</span>`;
+  return `<div class="card" style="margin:10px 0 0">
+     <div class="row" style="align-items:center">
+       <div style="flex:2"><span class="pill ${j.status}">${j.status}${cd}</span></div>
+       <div style="flex:0 0 auto">${stopBtn}</div>
+     </div>
+     <div style="margin-top:8px">${desc}</div>
+     ${res?`<div style="margin-top:8px;font-weight:600">${res}</div>`:''}
+     <pre>${(j.logTail||'').replace(/</g,'&lt;')}</pre>
+     ${shot}
+   </div>`;
+}
+
+async function refresh(){
+  try{
+    const { activeId, jobs } = await api('/api/state');
+    $('armBtn').disabled = !!activeId;
+    $('loginBtn').disabled = !!activeId;
+    $('status').innerHTML = jobs.length ? jobs.map(jobCard).join('') : '<span class="muted">No jobs yet.</span>';
+  }catch(e){ /* ignore transient */ }
+}
+loadAmenities();
+refresh();
+setInterval(refresh, 2500);
+</script>
+</body>
+</html>
