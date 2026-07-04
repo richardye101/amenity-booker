@@ -1,0 +1,8 @@
+[Unit]
+Description=BuildingLink auto-deploy check (pull + restart on new commit)
+
+[Service]
+Type=oneshot
+WorkingDirectory=__REPO__
+Environment=PORT=3000
+ExecStart=/bin/bash -lc '__REPO__/deploy/auto-deploy.sh'

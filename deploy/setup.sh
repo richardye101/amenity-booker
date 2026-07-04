@@ -15,9 +15,10 @@ echo "==> Installing Chromium + its OS libraries for Playwright..."
 npx playwright install --with-deps chromium
 
 echo
-echo "Setup done."
-echo "NEXT: seed the login session (no screen to type credentials on a server):"
-echo "  - Locally (a machine with a display):  npm run login   (sign in)"
-echo "  - Then copy the profile here:          scp -r user-data/ <server>:$(pwd)/"
-echo
-echo "Then start it:  xvfb-run -a npm start     (or install the systemd service)"
+echo "Setup done. NEXT:"
+echo "  1. Credentials for unattended auto-login:"
+echo "       cp .env.example .env && chmod 600 .env   # add BL_USERNAME / BL_PASSWORD"
+echo "     (or seed manually: 'npm run login' on a laptop, then scp -r user-data/ here)"
+echo "  2. Install boot + auto-deploy services:"
+echo "       bash deploy/install-services.sh"
+echo "  3. Browse to http://<server-ip>:3000"

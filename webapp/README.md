@@ -39,24 +39,38 @@ xvfb-run -a npm start
 ```bash
 # on the server, from the project root
 bash deploy/setup.sh                 # installs xvfb, node deps, chromium + libs
-# seed login: run `npm run login` on a laptop, then copy the profile over:
-#   scp -r user-data/ <server>:/opt/buildinglink-bot/
-xvfb-run -a npm start                # manual run, or install the service below
+cp .env.example .env && chmod 600 .env   # add BL_USERNAME / BL_PASSWORD (auto-login)
 ```
 
-Run on boot with systemd:
+### Run on boot + auto-deploy (user systemd services)
 
 ```bash
-sudo cp deploy/buildinglink-panel.service /etc/systemd/system/
-sudoedit /etc/systemd/system/buildinglink-panel.service   # set User=, WorkingDirectory=, PATH=
-sudo systemctl daemon-reload
-sudo systemctl enable --now buildinglink-panel
-journalctl -u buildinglink-panel -f                       # watch logs
+bash deploy/install-services.sh
 ```
 
-Then browse to `http://<server-ip>:3000`. The panel binds all interfaces; if
-that's too open, run it bound to localhost and reach it over an SSH tunnel
-(`ssh -L 3000:localhost:3000 <server>`).
+This installs two **user** services (no sudo needed to self-restart) and
+enables linger so they start at boot:
+
+- **buildinglink-panel** — runs the panel under Xvfb (`Restart=always`).
+- **buildinglink-deploy.timer** — every minute runs `deploy/auto-deploy.sh`,
+  which `git fetch`es and, if `origin/main` moved, pulls + `npm install`s +
+  restarts the panel. It **defers while a booking or login is active** (checks
+  `/api/state`) so it never kills an armed job. The repo is public, so the pull
+  needs no credentials.
+
+```bash
+systemctl --user status buildinglink-panel
+journalctl --user -u buildinglink-panel -f
+systemctl --user list-timers buildinglink-deploy.timer
+```
+
+Then browse to `http://<server-ip>:3000`. The panel binds all interfaces; for
+localhost-only set `HOST=127.0.0.1` (add `Environment=HOST=127.0.0.1` to the
+unit) and reach it via `ssh -L 3000:localhost:3000 <server>`.
+
+Login on the server is unattended via `.env` (auto-login). If you'd rather not
+store the password, run `npm run login` on a laptop and `scp -r user-data/`
+to the server instead.
 
 ## Use
 
