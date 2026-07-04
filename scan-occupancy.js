@@ -12,7 +12,8 @@ const ID = process.env.AMENITY_ID || '29916';
 const NAME = process.env.AMENITY_NAME || 'Tennis Court';
 const DAYS = Math.max(1, Math.min(31, parseInt(process.env.DAYS || '14', 10)));
 const OUT = path.join(__dirname, 'webapp', `occupancy-${ID}.json`);
-const GRID = 'https://harbourviewresidents.buildinglink.com/V2/Tenant/Amenities/AvailabilityGrid.aspx';
+// lowercase path avoids the V2->v2 redirect that can interrupt goto in a loop
+const GRID = 'https://harbourviewresidents.buildinglink.com/v2/tenant/amenities/availabilitygrid.aspx';
 
 const mdy = (d) => `${d.getMonth() + 1}/${d.getDate()}/${d.getFullYear()}`;
 const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -27,9 +28,11 @@ const dow = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
     const today = new Date();
     for (let i = 0; i < DAYS; i++) {
       const d = new Date(today.getFullYear(), today.getMonth(), today.getDate() + i);
-      await p.goto(`${GRID}?selectedDate=${encodeURIComponent(mdy(d))}`, { waitUntil: 'domcontentloaded' });
+      const url = `${GRID}?selectedDate=${encodeURIComponent(mdy(d))}`;
+      const goDay = async () => { await p.goto(url, { waitUntil: 'domcontentloaded' }).catch(() => {}); await p.waitForLoadState('domcontentloaded').catch(() => {}); };
+      await goDay();
       await p.waitForTimeout(i === 0 ? 1800 : 1200);
-      if (onAuth(p.url())) { await autoLogin(p, console.log); await p.goto(`${GRID}?selectedDate=${encodeURIComponent(mdy(d))}`, { waitUntil: 'domcontentloaded' }); await p.waitForTimeout(1500); }
+      if (onAuth(p.url())) { await autoLogin(p, console.log); await goDay(); await p.waitForTimeout(1500); }
       if (onAuth(p.url())) throw new Error('not signed in');
 
       const day = await p.evaluate((amenityName) => {
