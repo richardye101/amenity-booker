@@ -15,6 +15,8 @@ const OUT = path.join(__dirname, 'webapp', `occupancy-${ID}.json`);
 // lowercase path avoids the V2->v2 redirect that can interrupt goto in a loop
 const GRID = 'https://harbourviewresidents.buildinglink.com/v2/tenant/amenities/availabilitygrid.aspx';
 
+const parseLbl = (t) => { const m = (t || '').match(/(\d{1,2}):(\d{2})\s*([AP]M)/i); if (!m) return null; let h = Number(m[1]) % 12; if (/pm/i.test(m[3])) h += 12; return h * 60 + Number(m[2]); };
+const fmtMin = (x) => { x = ((x % 1440) + 1440) % 1440; const h = Math.floor(x / 60), m = x % 60, ap = h < 12 ? 'AM' : 'PM', h12 = h % 12 || 12; return `${h12}:${String(m).padStart(2, '0')} ${ap}`; };
 const mdy = (d) => `${d.getMonth() + 1}/${d.getDate()}/${d.getFullYear()}`;
 const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 const dow = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -41,40 +43,44 @@ const dow = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
         if (!grid || !tt) return { error: 'no grid' };
         const times = [...tt.rows].map((r) => (r.innerText || '').replace(/\s+/g, ' ').trim());
         const header = [...grid.rows[0].cells].map((c) => (c.innerText || '').replace(/\s+/g, ' ').replace(/\(shared.*/i, '').trim());
-        let col = header.findIndex((h) => h && amenityName.startsWith(h.slice(0, 10)) && h.startsWith(amenityName.slice(0, 10)));
-        if (col < 0) col = header.findIndex((h) => h.toLowerCase().includes(amenityName.toLowerCase().slice(0, 12)));
-        if (col < 0) return { error: 'amenity column not found', header };
+        const want = amenityName.toLowerCase();
+        let col = header.findIndex((h) => h.toLowerCase() === want);
+        if (col < 0) col = header.findIndex((h) => h && (h.toLowerCase().startsWith(want.slice(0, 16)) || want.startsWith(h.toLowerCase().slice(0, 16))));
+        if (col < 0) return { error: 'amenity column not found', header: header.filter(Boolean).slice(0, 25) };
+        // Status is the cell TEXT (Reserved/Requested/Restricted/Available or a
+        // resident/suite name). Only keep real time rows (skip repeated headers).
         const slots = [];
         for (let r = 1; r < grid.rows.length; r++) {
+          const time = times[r - 1] || '';
+          if (!/\d{1,2}:\d{2}\s*[AP]M/i.test(time)) continue;
           const cell = grid.rows[r].cells[col];
           if (!cell) continue;
-          const m = (cell.className || '').match(/ReservationGridCell-(\w+)/);
-          slots.push({ time: times[r - 1] || '', status: m ? m[1] : 'Unknown' });
+          slots.push({ time: time, label: (cell.innerText || '').replace(/\s+/g, ' ').trim() });
         }
         return { slots };
       }, NAME);
 
-      if (day.error) { days.push({ date: iso(d), label: `${dow[d.getDay()]} ${d.getMonth() + 1}/${d.getDate()}`, error: day.error }); continue; }
+      const label = `${dow[d.getDay()]} ${d.getMonth() + 1}/${d.getDate()}`;
+      if (day.error) { days.push({ date: iso(d), label, error: day.error }); continue; }
 
-      // Merge consecutive Reserved/Requested slots into busy ranges.
-      const busy = [];
+      // A slot is "busy" if it's not Available/Restricted/blank (Reserved,
+      // Requested, or a named booking). Merge consecutive same-label slots.
+      const isBusy = (l) => l && !/^(available|restricted)$/i.test(l);
+      const ranges = [];
       let cur = null;
-      const endLabel = (t) => t; // time label of a slot is its start; range end = next slot's start
-      for (let k = 0; k < day.slots.length; k++) {
-        const s = day.slots[k];
-        const isBusy = /Reserved|Requested/i.test(s.status);
-        if (isBusy) {
-          if (cur && cur.status === s.status) cur.endIdx = k;
-          else { if (cur) busy.push(cur); cur = { status: s.status, startIdx: k, endIdx: k }; }
-        } else if (cur) { busy.push(cur); cur = null; }
+      for (const s of day.slots) {
+        if (isBusy(s.label)) {
+          const min = parseLbl(s.time);
+          if (cur && cur.label === s.label) cur.lastMin = min;
+          else { if (cur) ranges.push(cur); cur = { label: s.label, startMin: min, lastMin: min }; }
+        } else if (cur) { ranges.push(cur); cur = null; }
       }
-      if (cur) busy.push(cur);
-      const ranges = busy.map((b) => ({
-        status: b.status,
-        start: day.slots[b.startIdx].time,
-        end: (day.slots[b.endIdx + 1] && day.slots[b.endIdx + 1].time) || 'end',
+      if (cur) ranges.push(cur);
+      const busy = ranges.filter((r) => r.startMin != null).map((r) => ({
+        status: /request/i.test(r.label) ? 'Requested' : (/^reserved$/i.test(r.label) ? 'Reserved' : r.label),
+        start: fmtMin(r.startMin), end: fmtMin(r.lastMin + 30),
       }));
-      days.push({ date: iso(d), label: `${dow[d.getDay()]} ${d.getMonth() + 1}/${d.getDate()}`, busy: ranges });
+      days.push({ date: iso(d), label, busy });
     }
     fs.writeFileSync(OUT, JSON.stringify({ amenityId: ID, amenityName: NAME, generatedAt: new Date().toISOString(), days }, null, 2));
     console.log('OCCUPANCY_DONE ' + days.length + ' days');
