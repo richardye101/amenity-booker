@@ -39,6 +39,7 @@
   pre { background:#0b1219; border:1px solid var(--line); border-radius:8px; padding:10px; font-size:11.5px; overflow:auto; max-height:180px; color:#b9c7d3; margin:8px 0 0; }
   img.shot { width:100%; border:1px solid var(--line); border-radius:8px; margin-top:10px; }
   .hint { font-size:12px; color:var(--mut); margin-top:6px; }
+  .card.mini { padding:8px 14px; margin:8px 0 0; }
   .banner { padding:9px 12px; border-radius:8px; font-size:13px; margin-bottom:12px; display:none; }
   .banner.err { background:#42201f; color:#ff9c96; display:block; }
   .banner.ok { background:#12351f; color:#7ee2a0; display:block; }
@@ -78,14 +79,14 @@
       </div>
     </div>
     <div class="row" style="margin-top:12px">
-      <div><label>Start</label><input type="time" id="start" value="09:00" step="900" /></div>
-      <div><label>End</label><input type="time" id="end" value="10:00" step="900" /></div>
+      <div><label>Start</label><select id="start"></select></div>
+      <div><label>End</label><select id="end"></select></div>
     </div>
     <div style="margin-top:14px">
       <div class="chk"><input type="checkbox" id="fbOn" /><label for="fbOn">Fallback slot if the first is taken</label></div>
       <div class="row" id="fbRow" style="display:none">
-        <div><label>Fallback start</label><input type="time" id="fbStart" value="10:00" step="900" /></div>
-        <div><label>Fallback end</label><input type="time" id="fbEnd" value="11:00" step="900" /></div>
+        <div><label>Fallback start</label><select id="fbStart"></select></div>
+        <div><label>Fallback end</label><select id="fbEnd"></select></div>
       </div>
     </div>
     <div id="amInfo" class="hint" style="margin-top:12px"></div>
@@ -99,7 +100,7 @@
         <select id="fireMode">
           <option value="auto">When this slot opens (auto)</option>
           <option value="midnight">At next midnight</option>
-          <option value="now">Now (test)</option>
+          <option value="now">Now</option>
           <option value="at">Specific time…</option>
         </select>
       </div>
@@ -173,6 +174,16 @@ $('fbOn').onchange = ()=>{ $('fbRow').style.display = $('fbOn').checked ? '' : '
 $('fireMode').onchange = ()=>{ $('fireAtWrap').style.display = $('fireMode').value==='at' ? '' : 'none'; updateInfo(); };
 $('date').onchange = updateInfo;
 
+// --- time dropdowns (30-min slots) with a 1-hour default duration ---
+function fmtTime(hhmm){ let [h,m]=hhmm.split(':').map(Number); const ap=h<12?'AM':'PM'; const h12=h%12||12; return `${h12}:${String(m).padStart(2,'0')} ${ap}`; }
+function addMin(hhmm, mins){ let [h,m]=hhmm.split(':').map(Number); let t=((h*60+m+mins)%1440+1440)%1440; return `${String(Math.floor(t/60)).padStart(2,'0')}:${String(t%60).padStart(2,'0')}`; }
+function fillTimes(sel){ sel.innerHTML=''; for(let t=0;t<1440;t+=30){ const hh=`${String(Math.floor(t/60)).padStart(2,'0')}:${String(t%60).padStart(2,'0')}`; const o=document.createElement('option'); o.value=hh; o.textContent=fmtTime(hh); sel.appendChild(o); } }
+['start','end','fbStart','fbEnd'].forEach(id=>fillTimes($(id)));
+$('start').value='09:00'; $('end').value='10:00'; $('fbStart').value='10:00'; $('fbEnd').value='11:00';
+// default duration = 1 hour: end follows start (still manually overridable)
+$('start').onchange = ()=>{ $('end').value = addMin($('start').value,60); };
+$('fbStart').onchange = ()=>{ $('fbEnd').value = addMin($('fbStart').value,60); };
+
 // default date = tomorrow
 (function(){ const d=new Date(); d.setDate(d.getDate()+1); $('date').value = d.toISOString().slice(0,10); })();
 
@@ -209,19 +220,32 @@ async function stop(id){ try{ await api('/api/stop','POST',{id}); refresh(); }ca
 
 function jobCard(j){
   const c = j.config||{};
+  const alive = j.alive;
+  const when = j.startedAt ? new Date(j.startedAt).toLocaleString() : '';
+  const stopBtn = alive ? `<button class="stop" onclick="stop('${j.id}')">Stop</button>` : '';
+
+  // Session checks and scans: compact, muted one-liners (not full cards).
+  if(j.kind==='login'){
+    const ok = j.status==='logged-in' || j.status==='done';
+    const txt = alive ? '⏳ Checking session…' : (ok ? '🔑 Session check — signed in ✓' : '🔑 Session check — sign-in failed ✗');
+    return `<div class="card mini"><span class="muted">${txt} · ${when}</span> ${stopBtn}</div>`;
+  }
+  if(j.kind==='scan'){
+    const txt = alive ? '🔄 Availability scan — running…' : (j.status==='done' ? '🔄 Availability scan — done ✓' : '🔄 Availability scan — failed ✗');
+    return `<div class="card mini"><span class="muted">${txt} · ${when}</span> ${stopBtn}</div>`;
+  }
+
+  // Bookings: full card.
   const res = j.result ? (j.result.booked?('✅ '+j.result.message):('❌ '+j.result.message)) : '';
   const cd = (j.status==='armed' && j.lastCountdown) ? ` · fires in ~${j.lastCountdown}` : '';
   const shot = j.shot ? `<img class="shot" src="/shot/${j.shot}?t=${Date.now()}" />` : '';
-  const stopBtn = j.alive ? `<button class="stop" onclick="stop('${j.id}')">Stop</button>` : '';
-  const desc = j.kind==='login' ? 'Login session'
-    : j.kind==='scan' ? `Availability scan — refreshes booking windows${c.reason?(' ('+c.reason+')'):''}`
-    : `${c.amenityName||''} · ${c.date||''} · ${c.primary||''}${c.fallback?(' (fallback '+c.fallback+')'):''}${c.dryRun?' · DRY':''}<br><span class="muted">fire: ${c.fire||''}</span>`;
+  const title = `🎾 ${c.amenityName||('#'+c.amenity)} · ${c.date||''} · ${c.primary||''}${c.fallback?(' → fallback '+c.fallback):''}${c.dryRun?' · DRY':''}`;
   return `<div class="card" style="margin:10px 0 0">
      <div class="row" style="align-items:center">
-       <div style="flex:2"><span class="pill ${j.status}">${j.status}${cd}</span></div>
+       <div style="flex:2"><b>Booking</b> &nbsp;<span class="pill ${j.status}">${j.status}${cd}</span></div>
        <div style="flex:0 0 auto">${stopBtn}</div>
      </div>
-     <div style="margin-top:8px">${desc}</div>
+     <div style="margin-top:8px">${title}<br><span class="muted">fire: ${c.fire||''} · started ${when}</span></div>
      ${res?`<div style="margin-top:8px;font-weight:600">${res}</div>`:''}
      <pre>${(j.logTail||'').replace(/</g,'&lt;')}</pre>
      ${shot}
@@ -234,7 +258,12 @@ async function refresh(){
     $('armBtn').disabled = !!activeId;
     $('loginBtn').disabled = !!activeId;
     renderSession(session);
-    $('status').innerHTML = jobs.length ? jobs.map(jobCard).join('') : '<span class="muted">No jobs yet.</span>';
+    // Show all bookings, plus only the most recent session-check and scan.
+    const show = jobs.filter(j=>j.kind==='booking');
+    const lastLogin = jobs.find(j=>j.kind==='login'); if(lastLogin) show.push(lastLogin);
+    const lastScan = jobs.find(j=>j.kind==='scan'); if(lastScan) show.push(lastScan);
+    show.sort((a,b)=>(b.startedAt||'').localeCompare(a.startedAt||''));
+    $('status').innerHTML = show.length ? show.map(jobCard).join('') : '<span class="muted">No activity yet.</span>';
   }catch(e){ /* ignore transient */ }
 }
 loadAmenities();
