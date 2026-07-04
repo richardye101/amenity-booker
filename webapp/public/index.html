@@ -40,6 +40,8 @@
   img.shot { width:100%; border:1px solid var(--line); border-radius:8px; margin-top:10px; }
   .hint { font-size:12px; color:var(--mut); margin-top:6px; }
   .card.mini { padding:8px 14px; margin:8px 0 0; }
+  .resrow { padding:7px 0; border-bottom:1px solid var(--line); font-size:14px; }
+  .resrow:last-child { border-bottom:none; }
   .banner { padding:9px 12px; border-radius:8px; font-size:13px; margin-bottom:12px; display:none; }
   .banner.err { background:#42201f; color:#ff9c96; display:block; }
   .banner.ok { background:#12351f; color:#7ee2a0; display:block; }
@@ -60,6 +62,14 @@
       </div>
       <div style="flex:0 0 auto"><button class="sec" id="loginBtn" onclick="refreshSession()">Refresh</button></div>
     </div>
+  </div>
+
+  <div class="card">
+    <div class="row" style="align-items:center">
+      <div style="flex:2"><h2 style="margin:0">My upcoming reservations</h2></div>
+      <div style="flex:0 0 auto"><button class="sec" id="mineBtn" onclick="refreshMine()">Refresh</button></div>
+    </div>
+    <div id="mineList" style="margin-top:12px"><span class="muted">Loading…</span></div>
   </div>
 
   <div class="card">
@@ -204,6 +214,23 @@ async function refreshSession(){
   try{ await api('/api/session/refresh','POST'); banner('Checking the server session…','ok'); refresh(); }
   catch(e){ banner(e.message,'err'); }
 }
+async function loadMine(){
+  try{
+    const { updatedAt, reservations } = await api('/api/reservations/mine');
+    const now = Date.now();
+    const up = (reservations||[]).filter(r => !r.startsAt || r.startsAt >= now - 3600000);
+    const stamp = updatedAt ? `<div class="hint">updated ${new Date(updatedAt).toLocaleString()}</div>` : '';
+    if(!up.length){ $('mineList').innerHTML = `<span class="muted">No upcoming reservations.</span>${stamp}`; return; }
+    $('mineList').innerHTML = up.map(r => {
+      const cls = /(approv|reserv)/i.test(r.status) ? 'booked' : (/request/i.test(r.status)?'armed':'starting');
+      return `<div class="resrow"><b>${r.amenity}</b> · ${r.date||''} ${r.start||''}${r.end?(' – '+r.end):''} <span class="pill ${cls}">${r.status||''}</span></div>`;
+    }).join('') + stamp;
+  }catch(e){}
+}
+async function refreshMine(){
+  try{ await api('/api/reservations/refresh','POST'); banner('Fetching your reservations…','ok'); refresh(); }
+  catch(e){ banner(e.message,'err'); }
+}
 async function arm(){
   const amSel=$('amenity').value;
   const amenityId = amSel==='custom' ? $('customId').value.trim() : amSel;
@@ -234,6 +261,10 @@ function jobCard(j){
     const txt = alive ? '🔄 Availability scan — running…' : (j.status==='done' ? '🔄 Availability scan — done ✓' : '🔄 Availability scan — failed ✗');
     return `<div class="card mini"><span class="muted">${txt} · ${when}</span> ${stopBtn}</div>`;
   }
+  if(j.kind==='reservations'){
+    const txt = alive ? '📋 Loading your reservations…' : (j.status==='done' ? '📋 My reservations — updated ✓' : '📋 My reservations — failed ✗');
+    return `<div class="card mini"><span class="muted">${txt} · ${when}</span> ${stopBtn}</div>`;
+  }
 
   // Bookings: full card.
   const res = j.result ? (j.result.booked?('✅ '+j.result.message):('❌ '+j.result.message)) : '';
@@ -257,11 +288,14 @@ async function refresh(){
     const { activeId, jobs, session } = await api('/api/state');
     $('armBtn').disabled = !!activeId;
     $('loginBtn').disabled = !!activeId;
+    $('mineBtn').disabled = !!activeId;
     renderSession(session);
-    // Show all bookings, plus only the most recent session-check and scan.
+    loadMine();
+    // Show all bookings, plus only the most recent session-check, scan, and reservations fetch.
     const show = jobs.filter(j=>j.kind==='booking');
     const lastLogin = jobs.find(j=>j.kind==='login'); if(lastLogin) show.push(lastLogin);
     const lastScan = jobs.find(j=>j.kind==='scan'); if(lastScan) show.push(lastScan);
+    const lastRes = jobs.find(j=>j.kind==='reservations'); if(lastRes) show.push(lastRes);
     show.sort((a,b)=>(b.startedAt||'').localeCompare(a.startedAt||''));
     $('status').innerHTML = show.length ? show.map(jobCard).join('') : '<span class="muted">No activity yet.</span>';
   }catch(e){ /* ignore transient */ }

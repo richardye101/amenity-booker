@@ -22,7 +22,9 @@ const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June',
 // All amenities (shared module). Users can also enter a custom ID.
 const AMENITIES = require(path.join(ROOT, 'amenities'));
 const META_FILE = path.join(ROOT, 'webapp', 'amenities-meta.json');
+const MY_RES_FILE = path.join(ROOT, 'webapp', 'my-reservations.json');
 function loadMeta() { try { return JSON.parse(fs.readFileSync(META_FILE, 'utf8')); } catch (_) { return {}; } }
+function loadMyRes() { try { return JSON.parse(fs.readFileSync(MY_RES_FILE, 'utf8')); } catch (_) { return { updatedAt: null, reservations: [] }; } }
 // Epoch ms when target date (Y, MO 0-based, D) becomes bookable, per rule type.
 function openMillisFor(meta, Y, MO, D) {
   if (!meta) return null;
@@ -55,7 +57,7 @@ function setSession(state) {
 // Infer sign-in state from a finished browser job's log.
 function inferSessionFromLog(runTag) {
   const log = readLog(runTag);
-  if (/LOGIN_RESULT [^\n]*"ok":true/.test(log) || /PREWARMED|session live|"booked":true|Wrote [^\n]*amenities-meta/.test(log)) return 'signed-in';
+  if (/LOGIN_RESULT [^\n]*"ok":true/.test(log) || /PREWARMED|session live|"booked":true|Wrote [^\n]*amenities-meta|MY_RESERVATIONS/.test(log)) return 'signed-in';
   if (/LOGIN_RESULT [^\n]*"ok":false/.test(log) || /no \.env creds|please LOG IN|login redirect|session expired/.test(log)) return 'signed-out';
   return null;
 }
@@ -75,6 +77,7 @@ function deriveStatus(job) {
   else if (/PREWARMED/.test(log)) phase = 'armed';
   else if (/please LOG IN/.test(log)) phase = 'awaiting-login';
   if (job.kind === 'scan') phase = /Wrote .*amenities-meta/.test(log) ? 'done' : (alive ? 'scanning' : 'failed');
+  if (job.kind === 'reservations') phase = /MY_RESERVATIONS/.test(log) ? 'done' : (alive ? 'loading' : 'failed');
   const m = log.match(/RESERVE_RESULT (\{.*\})/);
   let result = null;
   if (m) { try { result = JSON.parse(m[1]); } catch (_) {} }
@@ -147,6 +150,22 @@ function spawnScan(reason) {
   child.on('exit', () => { if (activeId === runTag) activeId = null; procs.delete(runTag); onBrowserJobExit(runTag); });
   console.log(`[scan] started (${reason})`);
 }
+function spawnReservations() {
+  if (activeId) return { error: 'A browser session is already active. Try again in a moment.' };
+  const runTag = 'res-' + Date.now();
+  const isMac = process.platform === 'darwin';
+  const script = path.join(ROOT, 'scan-reservations.js');
+  const child = spawn(isMac ? 'caffeinate' : 'node', isMac ? ['-i', 'node', script] : [script], {
+    cwd: ROOT, env: { ...process.env }, stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  const ws = fs.createWriteStream(path.join(RUN_LOGS, `${runTag}.log`));
+  child.stdout.pipe(ws); child.stderr.pipe(ws);
+  const job = { id: runTag, runTag, kind: 'reservations', config: {}, startedAt: new Date().toISOString() };
+  jobs.push(job); saveJobs();
+  procs.set(runTag, child); activeId = runTag;
+  child.on('exit', () => { if (activeId === runTag) activeId = null; procs.delete(runTag); onBrowserJobExit(runTag); });
+  return { ok: true, id: runTag };
+}
 function maybeScan(reason) {
   if (SCAN_INTERVAL_H <= 0) return;
   if (activeId) { setTimeout(() => maybeScan('retry-after-busy'), 30 * 60 * 1000); return; } // profile busy → retry in 30m
@@ -189,6 +208,12 @@ const server = http.createServer(async (req, res) => {
       return { ...j, status: st.phase, alive: st.alive, result: st.result, lastCountdown: st.lastCountdown, logTail: st.logTail, shot: latestShot(j.runTag) };
     });
     return send(res, 200, { activeId, session: sessionStatus, jobs: list });
+  }
+
+  if (p === '/api/reservations/mine' && req.method === 'GET') return send(res, 200, loadMyRes());
+  if (p === '/api/reservations/refresh' && req.method === 'POST') {
+    const r = spawnReservations();
+    return send(res, r.error ? 409 : 200, r);
   }
 
   // Refresh / verify the server browser's sign-in state (auto-login via .env).
