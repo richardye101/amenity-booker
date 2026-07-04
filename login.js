@@ -14,7 +14,10 @@ const CHECK_URL = 'https://harbourviewresidents.buildinglink.com/V2/Tenant/Ameni
   const page = ctx.pages()[0] || (await ctx.newPage());
   console.log('LOGIN: opening BuildingLink; log in if prompted...');
   await page.goto(CHECK_URL, { waitUntil: 'domcontentloaded' }).catch(() => {});
-  const deadline = Date.now() + 6 * 60 * 1000;
+  // With .env creds we auto-login (no human), so don't wait long. Without them,
+  // give the user time to sign in manually in the window.
+  const hasCreds = !!(process.env.BL_USERNAME && process.env.BL_PASSWORD);
+  const deadline = Date.now() + (hasCreds ? 70 * 1000 : 6 * 60 * 1000);
   const onTenant = () => {
     try { return /harbourviewresidents\.buildinglink\.com/i.test(new URL(page.url()).hostname) && !/auth\./i.test(new URL(page.url()).hostname); }
     catch (_) { return false; }

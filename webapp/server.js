@@ -45,6 +45,22 @@ const saveJobs = () => { try { fs.writeFileSync(JOBS_FILE, JSON.stringify(jobs, 
 const procs = new Map(); // id -> ChildProcess (live this server run only)
 let activeId = null;      // id of the job/login currently holding the browser
 
+// ---- session status (is the server's browser profile signed in?) ----------
+const SESSION_FILE = path.join(__dirname, 'session-status.json');
+let sessionStatus = (() => { try { return JSON.parse(fs.readFileSync(SESSION_FILE, 'utf8')); } catch (_) { return { state: 'unknown', at: null }; } })();
+function setSession(state) {
+  sessionStatus = { state, at: new Date().toISOString() };
+  try { fs.writeFileSync(SESSION_FILE, JSON.stringify(sessionStatus)); } catch (_) {}
+}
+// Infer sign-in state from a finished browser job's log.
+function inferSessionFromLog(runTag) {
+  const log = readLog(runTag);
+  if (/LOGIN_RESULT [^\n]*"ok":true/.test(log) || /PREWARMED|session live|"booked":true|Wrote [^\n]*amenities-meta/.test(log)) return 'signed-in';
+  if (/LOGIN_RESULT [^\n]*"ok":false/.test(log) || /no \.env creds|please LOG IN|login redirect|session expired/.test(log)) return 'signed-out';
+  return null;
+}
+function onBrowserJobExit(runTag) { const s = inferSessionFromLog(runTag); if (s) setSession(s); }
+
 function readLog(runTag) {
   try { return fs.readFileSync(path.join(RUN_LOGS, `${runTag}.log`), 'utf8'); } catch (_) { return ''; }
 }
@@ -107,7 +123,7 @@ function spawnEngine(env, runTag, logLabel) {
   const child = spawn(cmd, args, {
     cwd: ROOT, env: { ...process.env, ...env, RUN_TAG: runTag }, stdio: 'ignore',
   });
-  child.on('exit', () => { if (activeId && procs.get(activeId) === child) activeId = null; procs.delete(logLabel); saveJobs(); });
+  child.on('exit', () => { if (activeId && procs.get(activeId) === child) activeId = null; procs.delete(logLabel); onBrowserJobExit(runTag); saveJobs(); });
   return child;
 }
 
@@ -128,7 +144,7 @@ function spawnScan(reason) {
   const job = { id: runTag, runTag, kind: 'scan', config: { reason }, startedAt: new Date().toISOString() };
   jobs.push(job); saveJobs();
   procs.set(runTag, child); activeId = runTag;
-  child.on('exit', () => { if (activeId === runTag) activeId = null; procs.delete(runTag); });
+  child.on('exit', () => { if (activeId === runTag) activeId = null; procs.delete(runTag); onBrowserJobExit(runTag); });
   console.log(`[scan] started (${reason})`);
 }
 function maybeScan(reason) {
@@ -172,20 +188,21 @@ const server = http.createServer(async (req, res) => {
       const st = deriveStatus(j);
       return { ...j, status: st.phase, alive: st.alive, result: st.result, lastCountdown: st.lastCountdown, logTail: st.logTail, shot: latestShot(j.runTag) };
     });
-    return send(res, 200, { activeId, jobs: list });
+    return send(res, 200, { activeId, session: sessionStatus, jobs: list });
   }
 
-  if (p === '/api/login' && req.method === 'POST') {
-    if (activeId) return send(res, 409, { error: 'A browser session is already active. Stop it first.' });
+  // Refresh / verify the server browser's sign-in state (auto-login via .env).
+  if ((p === '/api/login' || p === '/api/session/refresh') && req.method === 'POST') {
+    if (activeId) return send(res, 409, { error: 'A browser session is already active. Try again in a moment.' });
     const runTag = 'login-' + Date.now();
     const child = spawn('node', [path.join(ROOT, 'login.js')], { cwd: ROOT, stdio: ['ignore', 'pipe', 'pipe'] });
-    const logPath = path.join(RUN_LOGS, `${runTag}.log`);
-    const ws = fs.createWriteStream(logPath);
+    const ws = fs.createWriteStream(path.join(RUN_LOGS, `${runTag}.log`));
     child.stdout.pipe(ws); child.stderr.pipe(ws);
     const job = { id: runTag, runTag, kind: 'login', config: {}, startedAt: new Date().toISOString() };
     jobs.push(job); saveJobs();
     procs.set(runTag, child); activeId = runTag;
-    child.on('exit', () => { if (activeId === runTag) activeId = null; procs.delete(runTag); });
+    setSession('checking');
+    child.on('exit', () => { if (activeId === runTag) activeId = null; procs.delete(runTag); onBrowserJobExit(runTag); });
     return send(res, 200, { ok: true, id: runTag });
   }
 

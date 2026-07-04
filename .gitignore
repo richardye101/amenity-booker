@@ -4,4 +4,5 @@ user-data/
 run-logs/
 capture/
 webapp/jobs.json
+webapp/session-status.json
 .env

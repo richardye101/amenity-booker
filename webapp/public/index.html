@@ -31,6 +31,10 @@
   .pill.booked{background:#12351f;color:#57d97f} .pill.failed{background:#42201f;color:#ff7b72}
   .pill.done{background:#12351f;color:#57d97f}
   .pill.scanning,.pill.awaiting-login,.pill.logged-in,.pill.starting{background:#1b3a5b;color:#79c0ff}
+  .dot{display:inline-block;width:11px;height:11px;border-radius:50%;margin-right:9px;vertical-align:middle}
+  .dot.signed-in{background:#3fb950;box-shadow:0 0 6px #3fb95088} .dot.signed-out{background:#f85149}
+  .dot.unknown{background:#8b949e} .dot.checking{background:#d29922;animation:pulse 1s infinite}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
   .muted { color:var(--mut); font-size:13px; }
   pre { background:#0b1219; border:1px solid var(--line); border-radius:8px; padding:10px; font-size:11.5px; overflow:auto; max-height:180px; color:#b9c7d3; margin:8px 0 0; }
   img.shot { width:100%; border:1px solid var(--line); border-radius:8px; margin-top:10px; }
@@ -47,10 +51,13 @@
   <div id="banner" class="banner"></div>
 
   <div class="card">
-    <h2>1 · Session</h2>
+    <h2>1 · Server session</h2>
     <div class="row" style="align-items:center">
-      <div style="flex:2"><span class="muted">Log into BuildingLink once — the session is reused for bookings. A browser window opens for you to sign in.</span></div>
-      <div style="flex:0 0 auto"><button class="sec" id="loginBtn" onclick="login()">Log in / refresh</button></div>
+      <div style="flex:2">
+        <span id="sessDot" class="dot unknown"></span><span id="sessText" style="font-weight:600">Unknown</span>
+        <div class="hint" id="sessWhen"></div>
+      </div>
+      <div style="flex:0 0 auto"><button class="sec" id="loginBtn" onclick="refreshSession()">Refresh</button></div>
     </div>
   </div>
 
@@ -169,8 +176,21 @@ $('date').onchange = updateInfo;
 // default date = tomorrow
 (function(){ const d=new Date(); d.setDate(d.getDate()+1); $('date').value = d.toISOString().slice(0,10); })();
 
-async function login(){
-  try{ await api('/api/login','POST'); banner('Login browser opened — sign in there. Status will update below.','ok'); refresh(); }
+const SESS = {
+  'signed-in':  { txt:'Signed in',     hint:'The server browser has a live BuildingLink session.' },
+  'signed-out': { txt:'Not signed in', hint:'Auto-login failed — check BL_USERNAME / BL_PASSWORD in .env, then Refresh.' },
+  'checking':   { txt:'Checking…',     hint:'Verifying the session in the server browser…' },
+  'unknown':    { txt:'Unknown',       hint:'No check yet — click Refresh.' },
+};
+function renderSession(s){
+  const state = (s && s.state) || 'unknown';
+  const info = SESS[state] || SESS.unknown;
+  $('sessDot').className = 'dot ' + state;
+  $('sessText').textContent = info.txt;
+  $('sessWhen').textContent = info.hint + (s && s.at ? ('  ·  checked ' + new Date(s.at).toLocaleString()) : '');
+}
+async function refreshSession(){
+  try{ await api('/api/session/refresh','POST'); banner('Checking the server session…','ok'); refresh(); }
   catch(e){ banner(e.message,'err'); }
 }
 async function arm(){
@@ -210,9 +230,10 @@ function jobCard(j){
 
 async function refresh(){
   try{
-    const { activeId, jobs } = await api('/api/state');
+    const { activeId, jobs, session } = await api('/api/state');
     $('armBtn').disabled = !!activeId;
     $('loginBtn').disabled = !!activeId;
+    renderSession(session);
     $('status').innerHTML = jobs.length ? jobs.map(jobCard).join('') : '<span class="muted">No jobs yet.</span>';
   }catch(e){ /* ignore transient */ }
 }
