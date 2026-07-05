@@ -287,7 +287,7 @@ const server = http.createServer(async (req, res) => {
   }
   if (p === '/api/queue/remove' && req.method === 'POST') {
     const b = await readBody(req);
-    queue = queue.filter((e) => !(e.id === b.id && e.status === 'queued')); // running/done stay
+    queue = queue.filter((e) => !(e.id === b.id && e.status !== 'running')); // can clear queued/booked/failed, not a running one
     saveQueue();
     return send(res, 200, { ok: true });
   }

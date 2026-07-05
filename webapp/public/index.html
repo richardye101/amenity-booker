@@ -293,7 +293,7 @@ function renderQueue(q){
   const pill = { queued:'armed', running:'firing', booked:'booked', failed:'failed' };
   el.innerHTML = q.sort((a,b)=>a.fireAt-b.fireAt).map(e=>{
     const c=e.config||{};
-    const rm = e.status==='queued' ? `<button class="sec" style="padding:3px 9px" onclick="removeQueued('${e.id}')">✕</button>` : '';
+    const rm = e.status!=='running' ? `<button class="sec" style="padding:3px 9px" onclick="removeQueued('${e.id}')">✕</button>` : '';
     const res = e.result ? ` — ${e.result}` : '';
     return `<div class="resrow"><span class="pill ${pill[e.status]||'starting'}">${e.status}</span> <b>${c.amenityName||''}</b> · ${c.date||''} · ${c.primary||''}${c.fallback?(' → '+c.fallback):''}${c.dryRun?' · DRY':''}<br><span class="muted">fires ${c.fire||''}${res}</span> ${rm}</div>`;
   }).join('');
