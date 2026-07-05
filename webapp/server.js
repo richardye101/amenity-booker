@@ -204,7 +204,7 @@ const server = http.createServer(async (req, res) => {
   // serve screenshots
   if (p.startsWith('/shot/') && req.method === 'GET') {
     const file = path.join(RUN_LOGS, path.basename(p.slice(6)));
-    if (fs.existsSync(file)) { res.writeHead(200, { 'Content-Type': 'image/png' }); return res.end(fs.readFileSync(file)); }
+    if (fs.existsSync(file)) { res.writeHead(200, { 'Content-Type': 'image/png', 'Cache-Control': 'public, max-age=31536000, immutable' }); return res.end(fs.readFileSync(file)); }
     res.writeHead(404); return res.end('no shot');
   }
 

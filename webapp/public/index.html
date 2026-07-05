@@ -127,7 +127,7 @@
       <div class="chk" style="margin-top:12px"><input type="checkbox" id="dryRun" /><label for="dryRun">Dry run (don't click Save)</label></div>
       <div id="openInfo" class="hint" style="margin-top:10px"></div>
       <div class="hint">Queued — the bot launches ~10 min before fire time. Add as many as you like.</div>
-      <div style="margin-top:14px"><button id="armBtn" onclick="arm()">Add to queue</button></div>
+      <div style="margin-top:14px"><button id="armBtn" onclick="arm()">Add to booking queue</button></div>
     </div>
 
    </div>
@@ -329,7 +329,7 @@ function jobCard(j){
   // Bookings: full card.
   const res = j.result ? (j.result.booked?('✅ '+j.result.message):('❌ '+j.result.message)) : '';
   const cd = (j.status==='armed' && j.lastCountdown) ? ` · fires in ~${j.lastCountdown}` : '';
-  const shot = j.shot ? `<img class="shot" src="/shot/${j.shot}?t=${Date.now()}" />` : '';
+  const shot = j.shot ? `<img class="shot" src="/shot/${j.shot}" />` : '';  // unique filename → cacheable, no re-fetch on poll
   const title = `🎾 ${c.amenityName||('#'+c.amenity)} · ${c.date||''} · ${c.primary||''}${c.fallback?(' → fallback '+c.fallback):''}${c.dryRun?' · DRY':''}`;
   return `<div class="card" style="margin:10px 0 0">
      <div class="row" style="align-items:center">
