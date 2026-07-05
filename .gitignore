@@ -5,4 +5,5 @@ run-logs/
 capture/
 webapp/jobs.json
 webapp/session-status.json
+webapp/queue.json
 .env

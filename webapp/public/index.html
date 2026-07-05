@@ -55,7 +55,7 @@
 <body>
 <div class="wrap">
   <h1>🎾 BuildingLink Booking Panel</h1>
-  <p class="sub">Harbour View Estates II — warms a logged-in browser and fires at your chosen time.</p>
+  <p class="sub">Harbour View Estates II — queue bookings; each fires automatically ~10 min before its slot opens.</p>
   <div id="banner" class="banner"></div>
 
   <div class="grid2">
@@ -67,6 +67,11 @@
           <div class="hint" id="sessWhen"></div></div>
         <button class="sec" id="loginBtn" onclick="refreshSession()">Refresh</button>
       </div>
+    </div>
+
+    <div class="card">
+      <h2>Booking queue</h2>
+      <div id="queueList" style="margin-top:12px"><span class="muted">Nothing queued.</span></div>
     </div>
 
     <div class="card">
@@ -121,8 +126,8 @@
       <div id="fireAtWrap" style="display:none;margin-top:10px"><label>Fire at</label><input type="datetime-local" id="fireAt" /></div>
       <div class="chk" style="margin-top:12px"><input type="checkbox" id="dryRun" /><label for="dryRun">Dry run (don't click Save)</label></div>
       <div id="openInfo" class="hint" style="margin-top:10px"></div>
-      <div class="hint">A browser window opens and holds until it fires. Only one booking can be armed at a time.</div>
-      <div style="margin-top:14px"><button id="armBtn" onclick="arm()">Arm booking</button></div>
+      <div class="hint">Queued — the bot launches ~10 min before fire time. Add as many as you like.</div>
+      <div style="margin-top:14px"><button id="armBtn" onclick="arm()">Add to queue</button></div>
     </div>
 
    </div>
@@ -278,8 +283,20 @@ async function arm(){
     fallbackEnabled: $('fbOn').checked, fbStart: $('fbStart').value, fbEnd: $('fbEnd').value,
     fireMode: $('fireMode').value, fireAt: $('fireAt').value, dryRun: $('dryRun').checked,
   };
-  try{ await api('/api/arm','POST',body); banner('Armed! A browser window is warming up. Watch status below.','ok'); refresh(); }
+  try{ await api('/api/queue','POST',body); banner('Added to the queue — it fires automatically ~10 min early.','ok'); refresh(); }
   catch(e){ banner(e.message,'err'); }
+}
+async function removeQueued(id){ try{ await api('/api/queue/remove','POST',{id}); refresh(); }catch(e){ banner(e.message,'err'); } }
+function renderQueue(q){
+  const el = $('queueList'); if(!el) return;
+  if(!q || !q.length){ el.innerHTML = '<span class="muted">Nothing queued. Fill in a booking and click Add to queue.</span>'; return; }
+  const pill = { queued:'armed', running:'firing', booked:'booked', failed:'failed' };
+  el.innerHTML = q.sort((a,b)=>a.fireAt-b.fireAt).map(e=>{
+    const c=e.config||{};
+    const rm = e.status==='queued' ? `<button class="sec" style="padding:3px 9px" onclick="removeQueued('${e.id}')">✕</button>` : '';
+    const res = e.result ? ` — ${e.result}` : '';
+    return `<div class="resrow"><span class="pill ${pill[e.status]||'starting'}">${e.status}</span> <b>${c.amenityName||''}</b> · ${c.date||''} · ${c.primary||''}${c.fallback?(' → '+c.fallback):''}${c.dryRun?' · DRY':''}<br><span class="muted">fires ${c.fire||''}${res}</span> ${rm}</div>`;
+  }).join('');
 }
 async function stop(id){ try{ await api('/api/stop','POST',{id}); refresh(); }catch(e){ banner(e.message,'err'); } }
 
@@ -328,9 +345,11 @@ function jobCard(j){
 
 async function refresh(){
   try{
-    const { activeId, jobs, session } = await api('/api/state');
-    ['armBtn','loginBtn','mineBtn','occBtn'].forEach(id=>{ const b=$(id); if(b) b.disabled = !!activeId; });
+    const { activeId, jobs, session, queue } = await api('/api/state');
+    // Queueing is free; only the profile-using buttons wait for the browser.
+    ['loginBtn','mineBtn','occBtn'].forEach(id=>{ const b=$(id); if(b) b.disabled = !!activeId; });
     renderSession(session);
+    renderQueue(queue);
     loadMine(); loadOcc();
     // Show all bookings, plus only the most recent of each background activity.
     const show = jobs.filter(j=>j.kind==='booking');

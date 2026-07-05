@@ -87,14 +87,16 @@ to the server instead.
    - *Now* — book immediately (already-open slots / testing).
    - *Specific time* — pick an exact datetime.
    - *Dry run* — fills everything but doesn't click Save.
-4. Click **Arm booking**. A browser window warms up and holds until fire time,
-   then books (and, if it fails, tries the fallback). Watch live status, log
-   tail, and a screenshot in the **Status** panel.
+4. Click **Add to queue**. The booking is saved to a persistent queue (survives
+   restarts). A ticker launches `reserve-fast.js` ~10 min before each fire time
+   — it prewarms, holds briefly, then books (with fallback). Queue as many as
+   you like; they run one at a time (same-time bookings run back-to-back).
 
 ## Notes
 
-- **One booking at a time.** BuildingLink's login profile can only be used by
-  one browser at once, so arming is disabled while a session is active.
+- **Queue over a persistent file** (`webapp/queue.json`): the browser is only
+  launched ~10 min before a booking's fire time, not held for hours. One
+  browser at a time (single login profile), so overlapping bookings serialize.
 - On macOS the booking runs under `caffeinate -i` so the Mac won't idle-sleep
   while waiting. Still keep the lid open / plugged in (lid-close sleeps anyway).
 - Keep the browser window and this server running until the booking fires.

@@ -149,8 +149,38 @@ const spawnOccupancy = (amenityId, amenityName, days) => spawnJob({
 });
 function maybeScan(reason) {
   if (SCAN_INTERVAL_H <= 0) return;
-  if (activeId) { setTimeout(() => maybeScan('retry-after-busy'), 30 * 60 * 1000); return; } // profile busy → retry in 30m
+  if (activeId || bookingDueSoon()) { setTimeout(() => maybeScan('retry-after-busy'), 30 * 60 * 1000); return; }
   spawnScan(reason);
+}
+
+// ---- booking queue --------------------------------------------------------
+// Persistent list of scheduled bookings. A ticker launches reserve-fast.js
+// LEAD_MS before each fire time (it prewarms, holds, then fires). One at a time
+// (single browser profile); same-time bookings run back-to-back.
+const QUEUE_FILE = path.join(__dirname, 'queue.json');
+const LEAD_MS = 10 * 60 * 1000;
+let queue = []; try { queue = JSON.parse(fs.readFileSync(QUEUE_FILE, 'utf8')); } catch (_) { queue = []; }
+const saveQueue = () => { try { fs.writeFileSync(QUEUE_FILE, JSON.stringify(queue, null, 2)); } catch (_) {} };
+const nextMidnight = () => { const t = new Date(); t.setHours(24, 0, 0, 0); return t.getTime(); };
+const bookingDueSoon = () => queue.some((e) => e.status === 'queued' && e.fireAt <= Date.now() + LEAD_MS + 60000);
+
+function reconcileQueue() {
+  for (const e of queue) {
+    if (e.status !== 'running' || procs.has(e.runTag)) continue;
+    const m = readLog(e.runTag).match(/RESERVE_RESULT (\{.*\})/);
+    if (m) { try { const r = JSON.parse(m[1]); e.status = r.booked ? 'booked' : 'failed'; e.result = r.message; } catch (_) { e.status = 'failed'; } }
+    else e.status = e.fireAt > Date.now() ? 'queued' : 'failed'; // crashed before result
+  }
+  saveQueue();
+}
+function tickQueue() {
+  reconcileQueue();
+  if (activeId) return;
+  const due = queue.filter((e) => e.status === 'queued' && e.fireAt <= Date.now() + LEAD_MS).sort((a, b) => a.fireAt - b.fireAt);
+  if (!due.length) return;
+  const e = due[0];
+  const r = spawnJob({ kind: 'booking', prefix: 'fast', script: 'reserve-fast.js', pipe: false, env: { ...e.env, FIRE_AT_MS: String(e.fireAt) }, config: e.config });
+  if (r.ok) { e.status = 'running'; e.runTag = r.id; saveQueue(); }
 }
 function scheduleScans() {
   if (SCAN_INTERVAL_H <= 0) { console.log('[scan] scheduled refresh disabled (SCAN_INTERVAL_HOURS=0)'); return; }
@@ -188,7 +218,8 @@ const server = http.createServer(async (req, res) => {
       const st = deriveStatus(j);
       return { ...j, status: st.phase, alive: st.alive, result: st.result, lastCountdown: st.lastCountdown, logTail: st.logTail, shot: latestShot(j.runTag) };
     });
-    return send(res, 200, { activeId, session: sessionStatus, jobs: list });
+    const q = queue.map((e) => ({ id: e.id, fireAt: e.fireAt, status: e.status, result: e.result || null, config: e.config }));
+    return send(res, 200, { activeId, session: sessionStatus, queue: q, jobs: list });
   }
 
   if (p === '/api/reservations/mine' && req.method === 'GET') return send(res, 200, loadMyRes());
@@ -213,7 +244,7 @@ const server = http.createServer(async (req, res) => {
     return send(res, r.error ? 409 : 200, r);
   }
 
-  if (p === '/api/arm' && req.method === 'POST') {
+  if ((p === '/api/arm' || p === '/api/queue') && req.method === 'POST') {
     const b = await readBody(req);
     if (!b.amenityId || !b.date || !b.start || !b.end) return send(res, 400, { error: 'amenityId, date, start, end required' });
     const dp = dateParts(b.date);
@@ -230,22 +261,35 @@ const server = http.createServer(async (req, res) => {
       // No fallback: make it identical to primary so a failed primary just reports.
       env.FB_START_TIME = s.display; env.FB_END_TIME = e.display; env.FB_START_H = String(s.hour24); env.FB_END_H = String(e.hour24);
     }
-    if (b.fireMode === 'now') env.FIRE_AT_MS = String(Date.now() + 2000);
-    else if (b.fireMode === 'at' && b.fireAt) env.FIRE_AT_MS = String(new Date(b.fireAt).getTime());
-    else if (b.fireMode === 'auto') {
-      // Compute the exact open moment from the amenity's booking-window rule.
-      const open = openMillisFor(loadMeta()[String(b.amenityId)], dp.Y, dp.MO, dp.D);
-      if (open !== null) env.FIRE_AT_MS = String(open <= Date.now() ? Date.now() + 2000 : open);
-      // if rule unknown, fall through to engine default (next midnight)
-    }
-    // else 'midnight': engine default = next local midnight
     if (b.dryRun) env.DRY_RUN = '1';
 
-    const r = spawnJob({ kind: 'booking', prefix: 'fast', script: 'reserve-fast.js', pipe: false, env, config: {
-      amenity: b.amenityId, amenityName: (AMENITIES.find((a) => a.id === String(b.amenityId)) || {}).name || `#${b.amenityId}`,
-      date: dp.title, primary: `${s.display}-${e.display}`, fallback: b.fallbackEnabled ? `${env.FB_START_TIME}-${env.FB_END_TIME}` : null,
-      fire: env.FIRE_AT_MS ? new Date(Number(env.FIRE_AT_MS)).toLocaleString() : 'next midnight', dryRun: !!b.dryRun } });
-    return send(res, r.error ? 409 : 200, r);
+    // Compute the exact fire time; the queue ticker launches reserve-fast ~10
+    // min before it (no browser held until then).
+    let fireAt;
+    if (b.fireMode === 'now') fireAt = Date.now();
+    else if (b.fireMode === 'at' && b.fireAt) fireAt = new Date(b.fireAt).getTime();
+    else if (b.fireMode === 'auto') { const o = openMillisFor(loadMeta()[String(b.amenityId)], dp.Y, dp.MO, dp.D); fireAt = o != null ? o : nextMidnight(); }
+    else fireAt = nextMidnight();
+    if (!fireAt || fireAt < Date.now()) fireAt = Date.now();
+
+    queue.push({
+      id: 'q' + Date.now(), fireAt, env, status: 'queued', queuedAt: new Date().toISOString(),
+      config: { amenity: b.amenityId, amenityName: (AMENITIES.find((a) => a.id === String(b.amenityId)) || {}).name || `#${b.amenityId}`,
+        date: dp.title, primary: `${s.display}-${e.display}`, fallback: b.fallbackEnabled ? `${env.FB_START_TIME}-${env.FB_END_TIME}` : null,
+        fire: new Date(fireAt).toLocaleString(), dryRun: !!b.dryRun },
+    });
+    saveQueue(); tickQueue(); // start immediately if it's already within the lead window
+    return send(res, 200, { ok: true });
+  }
+
+  if (p === '/api/queue' && req.method === 'GET') {
+    return send(res, 200, { queue: queue.map((e) => ({ id: e.id, fireAt: e.fireAt, status: e.status, result: e.result || null, config: e.config })) });
+  }
+  if (p === '/api/queue/remove' && req.method === 'POST') {
+    const b = await readBody(req);
+    queue = queue.filter((e) => !(e.id === b.id && e.status === 'queued')); // running/done stay
+    saveQueue();
+    return send(res, 200, { ok: true });
   }
 
   if (p === '/api/stop' && req.method === 'POST') {
@@ -266,4 +310,6 @@ const HOST = process.env.HOST || undefined;
 server.listen(PORT, HOST, () => {
   console.log(`\n  BuildingLink booking panel → http://${HOST || 'localhost'}:${PORT}${HOST ? '' : '  (all interfaces)'}\n`);
   scheduleScans();
+  setTimeout(tickQueue, 3000);           // resume any queued/interrupted bookings on boot
+  setInterval(tickQueue, 30 * 1000);     // launch due bookings ~10 min before fire
 });
