@@ -119,17 +119,20 @@ function readBody(req) {
   });
 }
 
-function spawnEngine(env, runTag, logLabel) {
-  const enginePath = path.join(ROOT, 'reserve-fast.js');
-  // On macOS, wrap in `caffeinate -i` so the Mac won't idle-sleep while waiting.
-  const isMac = process.platform === 'darwin';
-  const cmd = isMac ? 'caffeinate' : 'node';
-  const args = isMac ? ['-i', 'node', enginePath] : [enginePath];
-  const child = spawn(cmd, args, {
-    cwd: ROOT, env: { ...process.env, ...env, RUN_TAG: runTag }, stdio: 'ignore',
-  });
-  child.on('exit', () => { if (activeId && procs.get(activeId) === child) activeId = null; procs.delete(logLabel); onBrowserJobExit(runTag); saveJobs(); });
-  return child;
+// One launcher for every browser job. Holds the single-browser lock, tracks
+// the process, and pipes output to run-logs (except the booking engine, which
+// writes its own RUN_TAG log, so it runs pipe:false). macOS: caffeinate -i.
+function spawnJob({ kind, prefix, script, env = {}, config = {}, pipe = true }) {
+  if (activeId) return { error: 'A browser session is already active. Try again in a moment.' };
+  const runTag = `${prefix}-${Date.now()}`;
+  const target = path.join(ROOT, script);
+  const [cmd, args] = process.platform === 'darwin' ? ['caffeinate', ['-i', 'node', target]] : ['node', [target]];
+  const child = spawn(cmd, args, { cwd: ROOT, env: { ...process.env, ...env, RUN_TAG: runTag }, stdio: pipe ? ['ignore', 'pipe', 'pipe'] : 'ignore' });
+  if (pipe) { const ws = fs.createWriteStream(path.join(RUN_LOGS, `${runTag}.log`)); child.stdout.pipe(ws); child.stderr.pipe(ws); }
+  jobs.push({ id: runTag, runTag, kind, config, startedAt: new Date().toISOString() }); saveJobs();
+  procs.set(runTag, child); activeId = runTag;
+  child.on('exit', () => { if (activeId === runTag) activeId = null; procs.delete(runTag); onBrowserJobExit(runTag); saveJobs(); });
+  return { ok: true, id: runTag };
 }
 
 // ---- scheduled availability scan ------------------------------------------
@@ -137,50 +140,13 @@ function spawnEngine(env, runTag, logLabel) {
 // default weekly; 0 disables). Skips while a browser session is active.
 const SCAN_INTERVAL_H = parseFloat(process.env.SCAN_INTERVAL_HOURS || '168');
 function metaAgeHours() { try { return (Date.now() - fs.statSync(META_FILE).mtimeMs) / 3.6e6; } catch (_) { return Infinity; } }
-function spawnScan(reason) {
-  const runTag = 'scan-' + Date.now();
-  const isMac = process.platform === 'darwin';
-  const scan = path.join(ROOT, 'scan-availability.js');
-  const child = spawn(isMac ? 'caffeinate' : 'node', isMac ? ['-i', 'node', scan] : [scan], {
-    cwd: ROOT, env: { ...process.env }, stdio: ['ignore', 'pipe', 'pipe'],
-  });
-  const ws = fs.createWriteStream(path.join(RUN_LOGS, `${runTag}.log`));
-  child.stdout.pipe(ws); child.stderr.pipe(ws);
-  const job = { id: runTag, runTag, kind: 'scan', config: { reason }, startedAt: new Date().toISOString() };
-  jobs.push(job); saveJobs();
-  procs.set(runTag, child); activeId = runTag;
-  child.on('exit', () => { if (activeId === runTag) activeId = null; procs.delete(runTag); onBrowserJobExit(runTag); });
-  console.log(`[scan] started (${reason})`);
-}
-function spawnReservations() {
-  if (activeId) return { error: 'A browser session is already active. Try again in a moment.' };
-  const runTag = 'res-' + Date.now();
-  const isMac = process.platform === 'darwin';
-  const script = path.join(ROOT, 'scan-reservations.js');
-  const child = spawn(isMac ? 'caffeinate' : 'node', isMac ? ['-i', 'node', script] : [script], {
-    cwd: ROOT, env: { ...process.env }, stdio: ['ignore', 'pipe', 'pipe'],
-  });
-  const ws = fs.createWriteStream(path.join(RUN_LOGS, `${runTag}.log`));
-  child.stdout.pipe(ws); child.stderr.pipe(ws);
-  const job = { id: runTag, runTag, kind: 'reservations', config: {}, startedAt: new Date().toISOString() };
-  jobs.push(job); saveJobs();
-  procs.set(runTag, child); activeId = runTag;
-  child.on('exit', () => { if (activeId === runTag) activeId = null; procs.delete(runTag); onBrowserJobExit(runTag); });
-  return { ok: true, id: runTag };
-}
-function spawnOccupancy(amenityId, amenityName, days) {
-  if (activeId) return { error: 'A browser session is already active. Try again in a moment.' };
-  const runTag = 'occ-' + Date.now();
-  const isMac = process.platform === 'darwin';
-  const script = path.join(ROOT, 'scan-occupancy.js');
-  const env = { ...process.env, AMENITY_ID: String(amenityId), AMENITY_NAME: String(amenityName || ''), DAYS: String(days || 14) };
-  const child = spawn(isMac ? 'caffeinate' : 'node', isMac ? ['-i', 'node', script] : [script], { cwd: ROOT, env, stdio: ['ignore', 'pipe', 'pipe'] });
-  const ws = fs.createWriteStream(path.join(RUN_LOGS, `${runTag}.log`)); child.stdout.pipe(ws); child.stderr.pipe(ws);
-  const job = { id: runTag, runTag, kind: 'occupancy', config: { amenity: amenityId, amenityName, days }, startedAt: new Date().toISOString() };
-  jobs.push(job); saveJobs(); procs.set(runTag, child); activeId = runTag;
-  child.on('exit', () => { if (activeId === runTag) activeId = null; procs.delete(runTag); onBrowserJobExit(runTag); });
-  return { ok: true, id: runTag };
-}
+const spawnScan = (reason) => spawnJob({ kind: 'scan', prefix: 'scan', script: 'scan-availability.js', config: { reason } });
+const spawnReservations = () => spawnJob({ kind: 'reservations', prefix: 'res', script: 'scan-reservations.js' });
+const spawnOccupancy = (amenityId, amenityName, days) => spawnJob({
+  kind: 'occupancy', prefix: 'occ', script: 'scan-occupancy.js',
+  env: { AMENITY_ID: String(amenityId), AMENITY_NAME: String(amenityName || ''), DAYS: String(days || 14) },
+  config: { amenity: amenityId, amenityName, days },
+});
 function maybeScan(reason) {
   if (SCAN_INTERVAL_H <= 0) return;
   if (activeId) { setTimeout(() => maybeScan('retry-after-busy'), 30 * 60 * 1000); return; } // profile busy → retry in 30m
@@ -242,21 +208,12 @@ const server = http.createServer(async (req, res) => {
 
   // Refresh / verify the server browser's sign-in state (auto-login via .env).
   if ((p === '/api/login' || p === '/api/session/refresh') && req.method === 'POST') {
-    if (activeId) return send(res, 409, { error: 'A browser session is already active. Try again in a moment.' });
-    const runTag = 'login-' + Date.now();
-    const child = spawn('node', [path.join(ROOT, 'login.js')], { cwd: ROOT, stdio: ['ignore', 'pipe', 'pipe'] });
-    const ws = fs.createWriteStream(path.join(RUN_LOGS, `${runTag}.log`));
-    child.stdout.pipe(ws); child.stderr.pipe(ws);
-    const job = { id: runTag, runTag, kind: 'login', config: {}, startedAt: new Date().toISOString() };
-    jobs.push(job); saveJobs();
-    procs.set(runTag, child); activeId = runTag;
-    setSession('checking');
-    child.on('exit', () => { if (activeId === runTag) activeId = null; procs.delete(runTag); onBrowserJobExit(runTag); });
-    return send(res, 200, { ok: true, id: runTag });
+    const r = spawnJob({ kind: 'login', prefix: 'login', script: 'login.js' });
+    if (r.ok) setSession('checking');
+    return send(res, r.error ? 409 : 200, r);
   }
 
   if (p === '/api/arm' && req.method === 'POST') {
-    if (activeId) return send(res, 409, { error: 'A browser session is already active (the login profile allows one at a time). Stop it first.' });
     const b = await readBody(req);
     if (!b.amenityId || !b.date || !b.start || !b.end) return send(res, 400, { error: 'amenityId, date, start, end required' });
     const dp = dateParts(b.date);
@@ -284,18 +241,11 @@ const server = http.createServer(async (req, res) => {
     // else 'midnight': engine default = next local midnight
     if (b.dryRun) env.DRY_RUN = '1';
 
-    const runTag = 'fast-' + Date.now();
-    const child = spawnEngine(env, runTag, runTag);
-    const job = {
-      id: runTag, runTag, kind: 'booking',
-      config: { amenity: b.amenityId, amenityName: (AMENITIES.find((a) => a.id === String(b.amenityId)) || {}).name || `#${b.amenityId}`,
-        date: dp.title, primary: `${s.display}-${e.display}`, fallback: b.fallbackEnabled ? `${env.FB_START_TIME}-${env.FB_END_TIME}` : null,
-        fire: env.FIRE_AT_MS ? new Date(Number(env.FIRE_AT_MS)).toLocaleString() : 'next midnight', dryRun: !!b.dryRun },
-      startedAt: new Date().toISOString(),
-    };
-    jobs.push(job); saveJobs();
-    procs.set(runTag, child); activeId = runTag;
-    return send(res, 200, { ok: true, id: runTag });
+    const r = spawnJob({ kind: 'booking', prefix: 'fast', script: 'reserve-fast.js', pipe: false, env, config: {
+      amenity: b.amenityId, amenityName: (AMENITIES.find((a) => a.id === String(b.amenityId)) || {}).name || `#${b.amenityId}`,
+      date: dp.title, primary: `${s.display}-${e.display}`, fallback: b.fallbackEnabled ? `${env.FB_START_TIME}-${env.FB_END_TIME}` : null,
+      fire: env.FIRE_AT_MS ? new Date(Number(env.FIRE_AT_MS)).toLocaleString() : 'next midnight', dryRun: !!b.dryRun } });
+    return send(res, r.error ? 409 : 200, r);
   }
 
   if (p === '/api/stop' && req.method === 'POST') {
