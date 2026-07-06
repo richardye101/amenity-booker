@@ -77,14 +77,17 @@ function deriveStatus(job) {
   else if (/\bFIRE\b/.test(log)) phase = 'firing';
   else if (/PREWARMED/.test(log)) phase = 'armed';
   else if (/please LOG IN/.test(log)) phase = 'awaiting-login';
+  // A booking that already exited without a RESERVE_RESULT was killed/crashed
+  // (e.g. panel restart during warm-hold) — don't keep showing it as 'armed'.
+  if (job.kind === 'booking' && !alive && !/RESERVE_RESULT/.test(log)) phase = 'interrupted';
   if (job.kind === 'scan') phase = /Wrote .*amenities-meta/.test(log) ? 'done' : (alive ? 'scanning' : 'failed');
   if (job.kind === 'reservations') phase = /MY_RESERVATIONS/.test(log) ? 'done' : (alive ? 'loading' : 'failed');
   if (job.kind === 'occupancy') phase = /OCCUPANCY_DONE/.test(log) ? 'done' : (alive ? 'scanning' : 'failed');
   const m = log.match(/RESERVE_RESULT (\{.*\})/);
   let result = null;
   if (m) { try { result = JSON.parse(m[1]); } catch (_) {} }
-  const secs = log.match(/armed; (\d+)s to fire/g);
-  const lastCountdown = secs && secs.length ? secs[secs.length - 1] : null;
+  const secs = [...log.matchAll(/armed; (\d+)s to fire/g)];
+  const lastCountdown = secs.length ? secs[secs.length - 1][1] + 's' : null;
   return { alive, phase, result, lastCountdown, logTail: log.split('\n').slice(-12).join('\n') };
 }
 // ---- helpers --------------------------------------------------------------
