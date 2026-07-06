@@ -286,14 +286,15 @@ async function arm(){
   try{ await api('/api/queue','POST',body); banner('Added to the queue — it fires automatically ~10 min early.','ok'); refresh(); }
   catch(e){ banner(e.message,'err'); }
 }
-async function removeQueued(id){ try{ await api('/api/queue/remove','POST',{id}); refresh(); }catch(e){ banner(e.message,'err'); } }
+async function removeQueued(id, firing){ if(firing && !confirm('Cancel this booking while it is firing?')) return; try{ await api('/api/queue/remove','POST',{id}); refresh(); }catch(e){ banner(e.message,'err'); } }
 function renderQueue(q){
   const el = $('queueList'); if(!el) return;
   if(!q || !q.length){ el.innerHTML = '<span class="muted">Nothing queued. Fill in a booking and click Add to queue.</span>'; return; }
   const pill = { queued:'armed', running:'firing', booked:'booked', failed:'failed' };
   el.innerHTML = q.sort((a,b)=>a.fireAt-b.fireAt).map(e=>{
     const c=e.config||{};
-    const rm = e.status!=='running' ? `<button class="sec" style="padding:3px 9px" onclick="removeQueued('${e.id}')">✕</button>` : '';
+    const firing = e.status==='running';
+    const rm = `<button class="${firing?'stop':'sec'}" style="padding:3px 9px" onclick="removeQueued('${e.id}',${firing})">${firing?'Cancel':'✕'}</button>`;
     const res = e.result ? ` — ${e.result}` : '';
     return `<div class="resrow"><span class="pill ${pill[e.status]||'starting'}">${e.status}</span> <b>${c.amenityName||''}</b> · ${c.date||''} · ${c.primary||''}${c.fallback?(' → '+c.fallback):''}${c.dryRun?' · DRY':''}<br><span class="muted">fires ${c.fire||''}${res}</span> ${rm}</div>`;
   }).join('');

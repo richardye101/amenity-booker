@@ -287,7 +287,14 @@ const server = http.createServer(async (req, res) => {
   }
   if (p === '/api/queue/remove' && req.method === 'POST') {
     const b = await readBody(req);
-    queue = queue.filter((e) => !(e.id === b.id && e.status !== 'running')); // can clear queued/booked/failed, not a running one
+    const e = queue.find((x) => x.id === b.id);
+    if (e && e.status === 'running' && e.runTag) { // cancel a firing booking: kill its browser, then drop it
+      const c = procs.get(e.runTag);
+      if (c) { try { c.kill('SIGTERM'); } catch (_) {} }
+      if (activeId === e.runTag) activeId = null;
+      procs.delete(e.runTag);
+    }
+    queue = queue.filter((x) => x.id !== b.id);
     saveQueue();
     return send(res, 200, { ok: true });
   }

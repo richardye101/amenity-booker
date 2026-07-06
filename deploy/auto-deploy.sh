@@ -11,6 +11,18 @@ if curl -sf -m 5 "http://localhost:${PORT}/api/state" 2>/dev/null | grep -q '"ac
   exit 0
 fi
 
+# Defer if a booking is running or fires within 15 min. Read queue.json off disk
+# (not the HTTP API) so a slow/unreachable panel can't fail this check open and
+# let a restart kill an armed booking — the exact failure from 2026-07-05.
+if [ -f webapp/queue.json ] && node -e '
+  const q = require("./webapp/queue.json");
+  const soon = Date.now() + 15 * 60 * 1000;
+  process.exit(q.some((e) => e.status === "running" || (e.status === "queued" && e.fireAt <= soon)) ? 0 : 1);
+' 2>/dev/null; then
+  echo "$(date -Is) booking running/imminent — deferring deploy"
+  exit 0
+fi
+
 git fetch --quiet origin main
 LOCAL="$(git rev-parse HEAD)"
 REMOTE="$(git rev-parse origin/main)"

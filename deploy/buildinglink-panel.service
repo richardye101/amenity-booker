@@ -7,6 +7,10 @@ Wants=network-online.target
 Type=simple
 WorkingDirectory=__REPO__
 Environment=PORT=3000
+# Booking fire times are computed in local time; BuildingLink opens slots in the
+# building's zone. Set it explicitly so the server's UTC clock doesn't fire hours
+# off (2026-07-05: midnight fired at midnight UTC = 8pm EDT). Override if needed.
+Environment=TZ=America/New_York
 # Xvfb gives the headed browser a virtual display (SSO breaks in true headless).
 # `bash -lc` loads your login PATH so node/npm (incl. nvm) resolve.
 ExecStart=/bin/bash -lc 'exec xvfb-run -a --server-args="-screen 0 1600x1000x24" npm start'
