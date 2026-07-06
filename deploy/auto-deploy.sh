@@ -32,5 +32,13 @@ echo "$(date -Is) new deployment ${LOCAL:0:7} -> ${REMOTE:0:7}"
 git reset --hard origin/main    # deploy target: force-match remote (handles local drift)
 npm install --no-audit --no-fund
 # If Playwright itself was upgraded you may also need: npx playwright install chromium
+
+# Type-check gate: types are erased at runtime, so a broken .ts would only fail
+# once a job runs. Block the restart if the tree doesn't type-check.
+if ! npx tsc --noEmit; then
+  echo "$(date -Is) tsc --noEmit FAILED — not restarting (panel left on previous code)"
+  exit 1
+fi
+
 systemctl --user restart buildinglink-panel.service
 echo "$(date -Is) restarted panel"

@@ -1,5 +1,7 @@
-// All amenities discovered from the Select Amenity page (map-amenities.js).
-module.exports = [
+// All amenities discovered from the Select Amenity page (map-amenities.ts).
+import type { Amenity } from './types.ts';
+
+export const AMENITIES: Amenity[] = [
   { id: '61231', name: '1st Floor Lounge & Billiards Area' },
   { id: '61232', name: 'Basketball Court' },
   { id: '37908', name: 'BBQ2' },
@@ -23,3 +25,5 @@ module.exports = [
   { id: '61234', name: 'Squash Court' },
   { id: '29916', name: 'Tennis Court' },
 ];
+
+export default AMENITIES;

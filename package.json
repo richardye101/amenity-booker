@@ -2,19 +2,24 @@
   "name": "buildinglink-bot",
   "version": "1.0.0",
   "description": "",
-  "main": "webapp/server.js",
+  "main": "webapp/server.ts",
+  "type": "module",
   "scripts": {
-    "start": "node webapp/server.js",
-    "panel": "node webapp/server.js",
-    "login": "node login.js",
-    "map-amenities": "node map-amenities.js",
-    "scan": "node scan-availability.js"
+    "start": "node webapp/server.ts",
+    "panel": "node webapp/server.ts",
+    "typecheck": "tsc --noEmit",
+    "login": "node src/login.ts",
+    "map-amenities": "node src/map-amenities.ts",
+    "scan": "node src/scan.ts availability"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "type": "commonjs",
   "dependencies": {
     "playwright": "^1.61.1"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.0",
+    "@types/node": "^22.10.0"
   }
 }

@@ -10,19 +10,20 @@
 //      FB_START_TIME/FB_END_TIME/FB_START_H/FB_END_H (fallback),
 //      FIRE_AT_MS, DRY_RUN=1, HEADLESS=1.
 
-const { chromium } = require('playwright');
-const fs = require('fs');
-const path = require('path');
-const { loadEnv, autoLogin } = require('./bl-login');
+import { chromium } from 'playwright';
+import type { Page } from 'playwright';
+import fs from 'fs';
+import path from 'path';
+import { loadEnv, BASE_URL, USER_DATA_DIR, RUN_LOGS as LOG_DIR } from './config.ts';
+import { autoLogin } from './auth.ts';
+import type { ReserveResult } from './types.ts';
 loadEnv();
 
 const AMENITY_ID = process.env.AMENITY_ID || '29916';
 const RES_URL =
-  `https://harbourviewresidents.buildinglink.com/V2/Tenant/Amenities/NewReservation.aspx?amenityId=${AMENITY_ID}&from=0&selectedDate=`;
-const USER_DATA_DIR = path.join(__dirname, 'user-data');
-const LOG_DIR = path.join(__dirname, 'run-logs');
+  `${BASE_URL}/V2/Tenant/Amenities/NewReservation.aspx?amenityId=${AMENITY_ID}&from=0&selectedDate=`;
 
-function nextMidnightMs() {
+function nextMidnightMs(): number {
   const t = new Date();
   t.setHours(24, 0, 0, 0);
   return t.getTime();
@@ -37,14 +38,15 @@ const CFG = {
   dryRun: process.env.DRY_RUN === '1',
   headless: process.env.HEADLESS === '1',
 };
-const PRIMARY = {
+interface Slot { label: string; startTime: string; endTime: string; startH: number; endH: number; }
+const PRIMARY: Slot = {
   label: 'PRIMARY 9-10',
   startTime: process.env.START_TIME || '9:00 AM',
   endTime: process.env.END_TIME || '10:00 AM',
   startH: parseInt(process.env.START_H || '9', 10),
   endH: parseInt(process.env.END_H || '10', 10),
 };
-const FALLBACK = {
+const FALLBACK: Slot = {
   label: 'FALLBACK 10-11',
   startTime: process.env.FB_START_TIME || '10:00 AM',
   endTime: process.env.FB_END_TIME || '11:00 AM',
@@ -65,24 +67,24 @@ fs.mkdirSync(LOG_DIR, { recursive: true });
 const stamp = () => new Date().toISOString().replace(/[:.]/g, '-');
 const runTag = process.env.RUN_TAG || ('fast-' + stamp());
 const logFile = path.join(LOG_DIR, `${runTag}.log`);
-function log(msg) {
+function log(msg: string): void {
   const line = `[${new Date().toISOString()}] ${msg}`;
   console.log(line);
-  try { fs.appendFileSync(logFile, line + '\n'); } catch (_) {}
+  try { fs.appendFileSync(logFile, line + '\n'); } catch { /* ignore */ }
 }
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-async function shot(page, name) {
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+async function shot(page: Page, name: string): Promise<void> {
   const p = path.join(LOG_DIR, `${runTag}-${name}.png`);
   await page.screenshot({ path: p, fullPage: true }).catch(() => {});
   log(`screenshot: ${p}`);
 }
-const norm = (s) => (s || '').replace(/\s+/g, '').toLowerCase();
+const norm = (s: string) => (s || '').replace(/\s+/g, '').toLowerCase();
 const dateCellSel = `td[title*="${CFG.targetTitle}"] a`;
-const onLogin = (url) => /auth\.buildinglink\.com/i.test(url);
-const onResPage = (url) => /NewReservation\.aspx/i.test(new URL(url).pathname);
+const onLogin = (url: string) => /auth\.buildinglink\.com/i.test(url);
+const onResPage = (url: string) => /NewReservation\.aspx/i.test(new URL(url).pathname);
 
 // Reload/click until the target date cell is bookable, then select it.
-async function ensureDateSelected(page) {
+async function ensureDateSelected(page: Page): Promise<void> {
   await page.goto(RES_URL, { waitUntil: 'domcontentloaded' });
   if (onLogin(page.url())) throw new Error('session expired (login redirect)');
   await page.waitForSelector(IDS.agreeCheckbox, { timeout: 20000 }).catch(() => {});
@@ -94,16 +96,16 @@ async function ensureDateSelected(page) {
 }
 
 // Fill times + waiver, verify, and Save. Returns {booked, message}.
-async function fillAndSave(page, slot) {
+async function fillAndSave(page: Page, slot: Slot): Promise<ReserveResult> {
   log(`${slot.label}: setting times ${slot.startTime}-${slot.endTime}`);
   await page.evaluate(
     ({ sid, eid, Y, MO, D, sH, eH }) => {
       try {
-        const s = window.$find && window.$find(sid);
-        const e = window.$find && window.$find(eid);
+        const s = (window as any).$find && (window as any).$find(sid);
+        const e = (window as any).$find && (window as any).$find(eid);
         if (s && s.set_selectedDate) s.set_selectedDate(new Date(Y, MO, D, sH, 0, 0));
         if (e && e.set_selectedDate) e.set_selectedDate(new Date(Y, MO, D, eH, 0, 0));
-      } catch (_) {}
+      } catch { /* ignore */ }
     },
     { sid: IDS.startTimePicker, eid: IDS.endTimePicker, Y: CFG.Y, MO: CFG.MO, D: CFG.D, sH: slot.startH, eH: slot.endH }
   );
@@ -152,7 +154,7 @@ async function fillAndSave(page, slot) {
   return { booked, message: booked ? `BOOKED ${slot.label}` : `NOT booked ${slot.label}: ${errSnip || 'stayed on form'}` };
 }
 
-(async () => {
+async function run(): Promise<void> {
   log(`START reserve-fast (with fallback). dryRun=${CFG.dryRun} target="${CFG.targetTitle}" primary=${PRIMARY.startTime}-${PRIMARY.endTime} fallback=${FALLBACK.startTime}-${FALLBACK.endTime}`);
   log(`fire at: ${new Date(CFG.fireAt).toString()} (${Math.round((CFG.fireAt - Date.now()) / 1000)}s from now)`);
   const ctx = await chromium.launchPersistentContext(USER_DATA_DIR, {
@@ -160,7 +162,7 @@ async function fillAndSave(page, slot) {
   });
   const page = ctx.pages()[0] || (await ctx.newPage());
   page.setDefaultTimeout(30000);
-  const result = { booked: false, message: '' };
+  const result: ReserveResult = { booked: false, message: '' };
 
   try {
     // PREWARM
@@ -249,7 +251,7 @@ async function fillAndSave(page, slot) {
     result.booked = r.booked;
     result.message = r.message;
   } catch (err) {
-    result.message = String(err && err.message ? err.message : err);
+    result.message = String(err && (err as Error).message ? (err as Error).message : err);
     log('ERROR: ' + result.message);
     await shot(page, 'error');
   } finally {
@@ -258,4 +260,6 @@ async function fillAndSave(page, slot) {
     await ctx.close();
     process.exit(result.booked ? 0 : 1);
   }
-})();
+}
+
+if (process.argv[1] && process.argv[1].endsWith('reserve.ts')) run();
