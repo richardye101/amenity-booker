@@ -87,16 +87,6 @@ function deriveStatus(job) {
   const lastCountdown = secs && secs.length ? secs[secs.length - 1] : null;
   return { alive, phase, result, lastCountdown, logTail: log.split('\n').slice(-12).join('\n') };
 }
-function latestShot(runTag) {
-  try {
-    const files = fs.readdirSync(RUN_LOGS)
-      .filter((f) => f.startsWith(runTag + '-') && f.endsWith('.png'))
-      .map((f) => ({ f, t: fs.statSync(path.join(RUN_LOGS, f)).mtimeMs }))
-      .sort((a, b) => b.t - a.t);
-    return files.length ? files[0].f : null;
-  } catch (_) { return null; }
-}
-
 // ---- helpers --------------------------------------------------------------
 function toDisplay(hhmm) {
   let [h, m] = hhmm.split(':').map(Number);
@@ -216,7 +206,7 @@ const server = http.createServer(async (req, res) => {
   if (p === '/api/state' && req.method === 'GET') {
     const list = jobs.slice(-15).reverse().map((j) => {
       const st = deriveStatus(j);
-      return { ...j, status: st.phase, alive: st.alive, result: st.result, lastCountdown: st.lastCountdown, logTail: st.logTail, shot: latestShot(j.runTag) };
+      return { ...j, status: st.phase, alive: st.alive, result: st.result, lastCountdown: st.lastCountdown, logTail: st.logTail };
     });
     const q = queue.map((e) => ({ id: e.id, fireAt: e.fireAt, status: e.status, result: e.result || null, config: e.config }));
     return send(res, 200, { activeId, session: sessionStatus, queue: q, jobs: list });

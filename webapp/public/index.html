@@ -4,6 +4,7 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>BuildingLink Booking Panel</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><circle cx='16' cy='16' r='15' fill='%23d0e83a'/><path d='M7 3a19 19 0 0 0 0 26M25 3a19 19 0 0 1 0 26' fill='none' stroke='%23fff' stroke-width='2.5'/></svg>" />
 <style>
   :root { --bg:#0f1720; --card:#18232f; --ink:#e6edf3; --mut:#8aa0b3; --acc:#2ea043; --accf:#238636; --warn:#d29922; --err:#f85149; --line:#26333f; }
   * { box-sizing: border-box; }
@@ -42,7 +43,6 @@
   @keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
   .muted { color:var(--mut); font-size:13px; }
   pre { background:#0b1219; border:1px solid var(--line); border-radius:8px; padding:10px; font-size:11.5px; overflow:auto; max-height:180px; color:#b9c7d3; margin:8px 0 0; }
-  img.shot { width:100%; border:1px solid var(--line); border-radius:8px; margin-top:10px; }
   .hint { font-size:12px; color:var(--mut); margin-top:6px; }
   .card.mini { padding:8px 14px; margin:8px 0 0; }
   .resrow { padding:7px 0; border-bottom:1px solid var(--line); font-size:14px; }
@@ -330,7 +330,6 @@ function jobCard(j){
   // Bookings: full card.
   const res = j.result ? (j.result.booked?('✅ '+j.result.message):('❌ '+j.result.message)) : '';
   const cd = (j.status==='armed' && j.lastCountdown) ? ` · fires in ~${j.lastCountdown}` : '';
-  const shot = j.shot ? `<img class="shot" src="/shot/${j.shot}" />` : '';  // unique filename → cacheable, no re-fetch on poll
   const title = `🎾 ${c.amenityName||('#'+c.amenity)} · ${c.date||''} · ${c.primary||''}${c.fallback?(' → fallback '+c.fallback):''}${c.dryRun?' · DRY':''}`;
   return `<div class="card" style="margin:10px 0 0">
      <div class="row" style="align-items:center">
@@ -340,7 +339,6 @@ function jobCard(j){
      <div style="margin-top:8px">${title}<br><span class="muted">fire: ${c.fire||''} · started ${when}</span></div>
      ${res?`<div style="margin-top:8px;font-weight:600">${res}</div>`:''}
      <pre>${(j.logTail||'').replace(/</g,'&lt;')}</pre>
-     ${shot}
    </div>`;
 }
 
