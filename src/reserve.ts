@@ -39,17 +39,19 @@ const CFG = {
   headless: process.env.HEADLESS === '1',
 };
 interface Slot { label: string; startTime: string; endTime: string; startH: number; endH: number; }
+const START = process.env.START_TIME || '9:00 AM';
+const END = process.env.END_TIME || '10:00 AM';
+const FB_START = process.env.FB_START_TIME || '10:00 AM';
+const FB_END = process.env.FB_END_TIME || '11:00 AM';
 const PRIMARY: Slot = {
-  label: 'PRIMARY 9-10',
-  startTime: process.env.START_TIME || '9:00 AM',
-  endTime: process.env.END_TIME || '10:00 AM',
+  label: `primary ${START}–${END}`,
+  startTime: START, endTime: END,
   startH: parseInt(process.env.START_H || '9', 10),
   endH: parseInt(process.env.END_H || '10', 10),
 };
 const FALLBACK: Slot = {
-  label: 'FALLBACK 10-11',
-  startTime: process.env.FB_START_TIME || '10:00 AM',
-  endTime: process.env.FB_END_TIME || '11:00 AM',
+  label: `fallback ${FB_START}–${FB_END}`,
+  startTime: FB_START, endTime: FB_END,
   startH: parseInt(process.env.FB_START_H || '10', 10),
   endH: parseInt(process.env.FB_END_H || '11', 10),
 };
