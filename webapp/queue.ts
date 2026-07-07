@@ -45,6 +45,14 @@ export function reconcileQueue(): void {
     if (m) { try { const r = JSON.parse(m[1]); e.status = r.booked ? 'booked' : 'failed'; e.result = r.message; } catch { e.status = 'failed'; } }
     else e.status = e.fireAt > Date.now() ? 'queued' : 'failed'; // crashed before result
   }
+  // A booked slot "moves" to My reservations: drop it from the queue and
+  // refresh the scrape so it shows up there. (Failed entries stay visible.)
+  if (queue.some((e) => e.status === 'booked')) {
+    queue = queue.filter((e) => e.status !== 'booked');
+    saveQueue();
+    if (!getActiveId()) spawnReservations();
+    return;
+  }
   saveQueue();
 }
 export function tickQueue(): void {
