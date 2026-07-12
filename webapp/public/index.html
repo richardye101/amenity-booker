@@ -309,11 +309,13 @@ async function loadMine(){
     const stamp = updatedAt ? `<div class="hint">updated ${new Date(updatedAt).toLocaleString()}</div>` : '';
     if(!up.length){ $('mineList').innerHTML = `<span class="muted">No upcoming reservations.</span>${stamp}`; return; }
     $('mineList').innerHTML = up.map((r,i) => {
-      const cls = /(approv|reserv)/i.test(r.status) ? 'booked' : (/request/i.test(r.status)?'armed':'starting');
-      // Only future reservations with an edit id are cancellable (BuildingLink blocks editing past ones).
+      // BuildingLink keeps cancelled/denied rows in the list ("Canceled" status) — don't offer to cancel those again.
+      const dead = /cancel|denied|declin/i.test(r.status);
+      const cls = dead ? 'failed' : (/(approv|reserv)/i.test(r.status) ? 'booked' : (/request/i.test(r.status)?'armed':'starting'));
+      // Only future, still-active reservations with an edit id are cancellable (BuildingLink blocks editing past ones).
       const future = !r.startsAt || r.startsAt > Date.now();
-      const rm = (r.editId && future) ? `<button class="sec" style="padding:3px 9px;float:right" onclick="cancelRes(${i})">Cancel</button>` : '';
-      return `<div class="resrow">${rm}<b>${r.amenity}</b> · ${r.date||''} ${r.start||''}${r.end?(' – '+r.end):''} <span class="pill ${cls}">${r.status||''}</span></div>`;
+      const rm = (r.editId && future && !dead) ? `<button class="sec" style="padding:3px 9px;float:right" onclick="cancelRes(${i})">Cancel</button>` : '';
+      return `<div class="resrow"${dead?' style="opacity:.55"':''}>${rm}<b>${r.amenity}</b> · ${r.date||''} ${r.start||''}${r.end?(' – '+r.end):''} <span class="pill ${cls}">${r.status||''}</span></div>`;
     }).join('') + stamp;
   }catch(e){}
 }
