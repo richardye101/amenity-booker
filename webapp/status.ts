@@ -22,7 +22,7 @@ export function setSession(state: string): void {
 // Infer sign-in state from a finished browser job's log.
 export function inferSessionFromLog(runTag: string): string | null {
   const log = readLog(runTag);
-  if (/LOGIN_RESULT [^\n]*"ok":true/.test(log) || /PREWARMED|session live|"booked":true|Wrote [^\n]*amenities-meta|MY_RESERVATIONS|OCCUPANCY_DONE/.test(log)) return 'signed-in';
+  if (/LOGIN_RESULT [^\n]*"ok":true/.test(log) || /PREWARMED|session live|"booked":true|Wrote [^\n]*amenities-meta|MY_RESERVATIONS|OCCUPANCY_DONE|CANCEL_RESULT/.test(log)) return 'signed-in';
   if (/LOGIN_RESULT [^\n]*"ok":false/.test(log) || /no \.env creds|please LOG IN|login redirect|session expired/.test(log)) return 'signed-out';
   return null;
 }
@@ -45,6 +45,7 @@ export function deriveStatus(job: Job, alive: boolean): DerivedStatus {
   if (job.kind === 'scan') phase = /Wrote .*amenities-meta/.test(log) ? 'done' : (alive ? 'scanning' : 'failed');
   if (job.kind === 'reservations') phase = /MY_RESERVATIONS/.test(log) ? 'done' : (alive ? 'loading' : 'failed');
   if (job.kind === 'occupancy') phase = /OCCUPANCY_DONE/.test(log) ? 'done' : (alive ? 'scanning' : 'failed');
+  if (job.kind === 'cancel') phase = /CANCEL_RESULT.*"cancelled":true/.test(log) ? 'done' : (alive ? 'loading' : 'failed');
   const m = log.match(/RESERVE_RESULT (\{.*\})/);
   let result: ReserveResult | null = null;
   if (m) { try { result = JSON.parse(m[1]); } catch { /* ignore */ } }

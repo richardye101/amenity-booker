@@ -55,7 +55,7 @@
 <body>
 <div class="wrap">
   <h1>🎾 BuildingLink Booking Panel</h1>
-  <p class="sub">Harbour View Estates II — queue bookings; each fires automatically ~10 min before its slot opens.</p>
+  <p class="sub">Harbour View Estates II — queue bookings; each fires automatically ~10 min before its slot opens. &nbsp;·&nbsp; <a id="siteLink" href="#" target="_blank" rel="noopener" style="color:var(--acc)">Open BuildingLink ↗</a></p>
   <div id="banner" class="banner"></div>
 
   <div class="grid2">
@@ -147,16 +147,17 @@ async function api(path, method, body){
 
 let AMS = [];
 async function loadAmenities(){
-  const { amenities } = await api('/api/amenities');
+  const { amenities, baseUrl } = await api('/api/amenities');
   AMS = amenities;
+  if(baseUrl){ const L=$('siteLink'); L.href = baseUrl + '/V2/Tenant/Amenities/MyReservations.aspx?from=0'; }
   const sel = $('amenity');
   sel.innerHTML = amenities.map(a=>`<option value="${a.id}">${a.name} (#${a.id})</option>`).join('') + '<option value="custom">Custom amenityId…</option>';
-  sel.onchange = ()=>{ $('customWrap').style.display = sel.value==='custom' ? '' : 'none'; updateInfo(); };
+  sel.onchange = ()=>{ $('customWrap').style.display = sel.value==='custom' ? '' : 'none'; applyTimeWindow(); };
   const occ = $('occAmenity');
   occ.innerHTML = amenities.map(a=>`<option value="${a.id}">${a.name}</option>`).join('');
   occ.value = sel.value;
   occ.onchange = ()=>{ occInfoText(); loadOcc(); };
-  updateInfo(); occInfoText(); loadOcc();
+  applyTimeWindow(); occInfoText(); loadOcc();
 }
 function selectedMeta(){ const a = AMS.find(x=>x.id===$('amenity').value); return a ? a.meta : null; }
 function computeOpen(){
@@ -168,6 +169,14 @@ function computeOpen(){
   else if(meta.ruleType==='week'){ const dow = new Date(Y, M-1, D).getDay(); open = new Date(Y, M-1, D - dow, 0,0,0,0); }
   return open ? { open } : null;
 }
+let AVAIL_FULL = false;
+function availNote(){
+  if($('amenity').value==='custom') return '';
+  if(AVAIL_FULL) return '<br><span style="color:var(--err)">⚠ No open slots that day — the whole window is booked.</span>';
+  if(BUSY.length) return `<br><span style="color:var(--warn)">🚫 ${BUSY.length} taken slot(s) hidden for ${$('date').value}.</span>`;
+  if(BUSY_HAVE) return '<br><span style="color:var(--acc)">✓ All slots open that day.</span>';
+  return '<br><span class="muted">Tip: run “Check” under Amenity availability to hide slots already taken.</span>';
+}
 function updateInfo(){
   const meta = selectedMeta();
   const info = $('amInfo');
@@ -176,7 +185,7 @@ function updateInfo(){
     if(meta.opensRule) bits.push('📅 '+meta.opensRule+(meta.ruleLabel?(' ('+meta.ruleLabel+')'):''));
     if(meta.hours) bits.push('🕒 '+meta.hours);
     if(meta.duration) bits.push('⏱ '+meta.duration);
-    info.innerHTML = bits.join(' &nbsp;·&nbsp; ');
+    info.innerHTML = bits.join(' &nbsp;·&nbsp; ') + availNote();
   } else info.textContent = $('amenity').value==='custom' ? 'Custom amenity — window unknown; choose a fire time manually.' : 'No window data yet — run “npm run scan”.';
   const oi = $('openInfo');
   if($('fireMode').value==='auto'){
@@ -189,17 +198,81 @@ function updateInfo(){
 }
 $('fbOn').onchange = ()=>{ $('fbRow').style.display = $('fbOn').checked ? '' : 'none'; };
 $('fireMode').onchange = ()=>{ $('fireAtWrap').style.display = $('fireMode').value==='at' ? '' : 'none'; updateInfo(); };
-$('date').onchange = updateInfo;
+$('date').onchange = ()=>{ applyTimeWindow(); };
 
-// --- time dropdowns (30-min slots) with a 1-hour default duration ---
+// --- time dropdowns (30-min slots), constrained to each amenity's hours ---
 function fmtTime(hhmm){ let [h,m]=hhmm.split(':').map(Number); const ap=h<12?'AM':'PM'; const h12=h%12||12; return `${h12}:${String(m).padStart(2,'0')} ${ap}`; }
-function addMin(hhmm, mins){ let [h,m]=hhmm.split(':').map(Number); let t=((h*60+m+mins)%1440+1440)%1440; return `${String(Math.floor(t/60)).padStart(2,'0')}:${String(t%60).padStart(2,'0')}`; }
-function fillTimes(sel){ sel.innerHTML=''; for(let t=0;t<1440;t+=30){ const hh=`${String(Math.floor(t/60)).padStart(2,'0')}:${String(t%60).padStart(2,'0')}`; const o=document.createElement('option'); o.value=hh; o.textContent=fmtTime(hh); sel.appendChild(o); } }
-['start','end','fbStart','fbEnd'].forEach(id=>fillTimes($(id)));
-$('start').value='09:00'; $('end').value='10:00'; $('fbStart').value='10:00'; $('fbEnd').value='11:00';
-// default duration = 1 hour: end follows start (still manually overridable)
-$('start').onchange = ()=>{ $('end').value = addMin($('start').value,60); };
-$('fbStart').onchange = ()=>{ $('fbEnd').value = addMin($('fbStart').value,60); };
+const toHHMM = (min)=>`${String(Math.floor(min/60)).padStart(2,'0')}:${String(min%60).padStart(2,'0')}`;
+const toMin = (hhmm)=>{ const [h,m]=hhmm.split(':').map(Number); return h*60+m; };
+function addMin(hhmm, mins){ let t=((toMin(hhmm)+mins)%1440+1440)%1440; return toHHMM(t); }
+// Fill a select with 30-min marks in [fromMin, toMin] inclusive, skipping any
+// mark for which blocked(min) is true (used to hide already-taken slots).
+function fillTimes(sel, fromMin, toMin, blocked){ sel.innerHTML=''; for(let t=fromMin;t<=toMin;t+=30){ if(blocked && blocked(t)) continue; const hh=toHHMM(t%1440); const o=document.createElement('option'); o.value=hh; o.textContent=fmtTime(hh); sel.appendChild(o); } }
+
+// Parse "7:00 AM to 9:00 PM" -> {startMin,endMin}. Returns null for overnight /
+// wrap-past-midnight windows (the booking engine only books a single day) so
+// those fall back to an unconstrained 24h picker.
+function parseWindow(meta){
+  if(!meta || !meta.hours) return null;
+  const m = meta.hours.match(/(\d{1,2}):(\d{2})\s*([AP]M)\s+to\s+(\d{1,2}):(\d{2})\s*([AP]M)/i);
+  if(!m) return null;
+  const to24=(h,ap)=>{ h=Number(h)%12; if(/pm/i.test(ap)) h+=12; return h; };
+  const startMin = to24(m[1],m[3])*60 + Number(m[2]);
+  const endMin   = to24(m[4],m[6])*60 + Number(m[5]);
+  if(/following day/i.test(meta.hours) || endMin <= startMin) return null; // overnight — don't constrain
+  return { startMin, endMin };
+}
+// Already-taken slots for the selected booking amenity+date (from cached
+// occupancy). BUSY is a list of {a,b} minute ranges; empty if none cached.
+function parseClock(s){ const m=(s||'').match(/(\d{1,2}):(\d{2})\s*([AP]M)/i); if(!m) return null; let h=Number(m[1])%12; if(/pm/i.test(m[3])) h+=12; return h*60+Number(m[2]); }
+let BUSY = [], BUSY_HAVE = false;
+async function loadBusy(){
+  BUSY = []; BUSY_HAVE = false;
+  const id = $('amenity').value, dv = $('date').value;
+  if(id==='custom' || !id || !dv) return;
+  try{
+    const occ = await api('/api/occupancy?amenityId='+encodeURIComponent(id));
+    const day = ((occ&&occ.days)||[]).find(d=>d.date===dv);
+    if(occ && occ.days && occ.days.length){ BUSY_HAVE = true; }
+    if(day && day.busy) BUSY = day.busy.map(b=>({a:parseClock(b.start), b:parseClock(b.end)})).filter(r=>r.a!=null&&r.b!=null);
+  }catch(e){}
+}
+const slotBusy = (t,dur)=>BUSY.some(r=>r.a < t+dur && t < r.b);
+
+// Pick end = start+60 (clamped to the window), snapped to the nearest still-
+// available end option after start.
+function setEndFromStart(startSel, endSel, winEnd){
+  const s = toMin(startSel.value); const want = Math.min(winEnd, s+60);
+  const opts = [...endSel.options].map(o=>toMin(o.value)).filter(m=>m>s);
+  if(!opts.length) return;
+  endSel.value = toHHMM(opts.find(m=>m>=want) ?? opts[opts.length-1]);
+}
+// Refill start/end (+ fallback) for the selected amenity+date: constrained to
+// the amenity's hours and with already-taken 30-min slots removed. Async
+// because it pulls cached occupancy. Called on amenity/date change and on load.
+async function applyTimeWindow(){
+  await loadBusy();
+  const w = parseWindow(selectedMeta());
+  const lo = w ? w.startMin : 0, hi = w ? w.endMin : 1410;
+  const startBlocked = t => slotBusy(t, 30);       // 30-min slot starting at t
+  const endBlocked   = t => slotBusy(t-30, 30);    // 30-min slot ending at t
+  fillTimes($('start'), lo, Math.max(lo, hi-30), startBlocked);
+  fillTimes($('end'),   Math.min(hi, lo+30), hi, endBlocked);
+  fillTimes($('fbStart'), lo, Math.max(lo, hi-30), startBlocked);
+  fillTimes($('fbEnd'),   Math.min(hi, lo+30), hi, endBlocked);
+  const full = $('start').options.length===0;
+  const setPair = (sSel,eSel)=>{ if(!sSel.options.length) return; sSel.selectedIndex=0; setEndFromStart(sSel,eSel,hi); };
+  setPair($('start'), $('end'));
+  // fallback defaults to the slot after the primary, if one is available.
+  if($('fbStart').options.length){ const after=[...$('fbStart').options].find(o=>toMin(o.value)>=toMin($('start').value||'0:0')); $('fbStart').value=(after||$('fbStart').options[0]).value; setEndFromStart($('fbStart'),$('fbEnd'),hi); }
+  AVAIL_FULL = full;
+  $('armBtn').disabled = full;
+  updateInfo();
+}
+applyTimeWindow();
+// default duration = 1 hour: end follows start, snapped to available options.
+$('start').onchange = ()=>{ const w=parseWindow(selectedMeta()); setEndFromStart($('start'),$('end'), w?w.endMin:1440); };
+$('fbStart').onchange = ()=>{ const w=parseWindow(selectedMeta()); setEndFromStart($('fbStart'),$('fbEnd'), w?w.endMin:1440); };
 
 // default date = tomorrow
 (function(){ const d=new Date(); d.setDate(d.getDate()+1); $('date').value = d.toISOString().slice(0,10); })();
@@ -221,15 +294,26 @@ async function refreshSession(){
   try{ await api('/api/session/refresh','POST'); banner('Checking the server session…','ok'); refresh(); }
   catch(e){ banner(e.message,'err'); }
 }
+let MINE = [];
+async function cancelRes(i){
+  const r = MINE[i]; if(!r || !r.editId) return;
+  if(!confirm(`Cancel ${r.amenity} on ${r.date||''} ${r.start||''}? This removes it from BuildingLink.`)) return;
+  try{ await api('/api/reservations/cancel','POST',{ id:r.editId, amenity:r.amenity, date:r.date, start:r.start }); banner('Cancelling on BuildingLink…','ok'); refresh(); }
+  catch(e){ banner(e.message,'err'); }
+}
 async function loadMine(){
   try{
     const { updatedAt, reservations } = await api('/api/reservations/mine');
     const up = reservations || [];   // show everything BuildingLink lists (it only shows active ones)
+    MINE = up;
     const stamp = updatedAt ? `<div class="hint">updated ${new Date(updatedAt).toLocaleString()}</div>` : '';
     if(!up.length){ $('mineList').innerHTML = `<span class="muted">No upcoming reservations.</span>${stamp}`; return; }
-    $('mineList').innerHTML = up.map(r => {
+    $('mineList').innerHTML = up.map((r,i) => {
       const cls = /(approv|reserv)/i.test(r.status) ? 'booked' : (/request/i.test(r.status)?'armed':'starting');
-      return `<div class="resrow"><b>${r.amenity}</b> · ${r.date||''} ${r.start||''}${r.end?(' – '+r.end):''} <span class="pill ${cls}">${r.status||''}</span></div>`;
+      // Only future reservations with an edit id are cancellable (BuildingLink blocks editing past ones).
+      const future = !r.startsAt || r.startsAt > Date.now();
+      const rm = (r.editId && future) ? `<button class="sec" style="padding:3px 9px;float:right" onclick="cancelRes(${i})">Cancel</button>` : '';
+      return `<div class="resrow">${rm}<b>${r.amenity}</b> · ${r.date||''} ${r.start||''}${r.end?(' – '+r.end):''} <span class="pill ${cls}">${r.status||''}</span></div>`;
     }).join('') + stamp;
   }catch(e){}
 }
@@ -326,6 +410,11 @@ function jobCard(j){
     const txt = alive ? `📊 Checking ${nm} availability…` : (j.status==='done' ? `📊 ${nm} availability — updated ✓` : `📊 ${nm} availability — failed ✗`);
     return `<div class="card mini"><span class="muted">${txt} · ${when}</span> ${stopBtn}</div>`;
   }
+  if(j.kind==='cancel'){
+    const nm = c.amenityName||''; const when2 = `${c.date||''} ${c.start||''}`.trim();
+    const txt = alive ? `🗑 Cancelling ${nm} ${when2}…` : (j.status==='done' ? `🗑 Cancelled ${nm} ${when2} ✓` : `🗑 Cancel ${nm} ${when2} — failed ✗`);
+    return `<div class="card mini"><span class="muted">${txt} · ${when}</span> ${stopBtn}</div>`;
+  }
 
   // Bookings: full card.
   const res = j.result ? (j.result.booked?('✅ '+j.result.message):('❌ '+j.result.message)) : '';
@@ -352,7 +441,7 @@ async function refresh(){
     loadMine(); loadOcc();
     // Show all bookings, plus only the most recent of each background activity.
     const show = jobs.filter(j=>j.kind==='booking');
-    ['login','scan','reservations','occupancy'].forEach(k=>{ const j=jobs.find(x=>x.kind===k); if(j) show.push(j); });
+    ['login','scan','reservations','occupancy','cancel'].forEach(k=>{ const j=jobs.find(x=>x.kind===k); if(j) show.push(j); });
     show.sort((a,b)=>(b.startedAt||'').localeCompare(a.startedAt||''));
     $('status').innerHTML = show.length ? show.map(jobCard).join('') : '<span class="muted">No activity yet.</span>';
   }catch(e){ /* ignore transient */ }

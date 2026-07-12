@@ -20,6 +20,11 @@ export const bookingDueSoon = (): boolean => queue.some((e) => e.status === 'que
 // ---- scan spawners ---------------------------------------------------------
 export const spawnScan = (reason: string) => spawnJob({ kind: 'scan', prefix: 'scan', script: 'src/scan.ts', args: ['availability'], config: { reason } });
 export const spawnReservations = () => spawnJob({ kind: 'reservations', prefix: 'res', script: 'src/scan.ts', args: ['reservations'] });
+export const spawnCancel = (id: string, label: string, cfg: Record<string, unknown> = {}) => spawnJob({
+  kind: 'cancel', prefix: 'cancel', script: 'src/scan.ts', args: ['cancel'],
+  env: { CANCEL_ID: String(id || ''), CANCEL_LABEL: String(label || id || '') },
+  config: cfg,
+});
 export const spawnOccupancy = (amenityId: string | number, amenityName: string | undefined, days: number | undefined) => spawnJob({
   kind: 'occupancy', prefix: 'occ', script: 'src/scan.ts', args: ['occupancy'],
   env: { AMENITY_ID: String(amenityId), AMENITY_NAME: String(amenityName || ''), DAYS: String(days || 14) },

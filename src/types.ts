@@ -29,7 +29,7 @@ export interface ReserveResult {
   message: string;
 }
 
-export type JobKind = 'booking' | 'scan' | 'reservations' | 'occupancy' | 'login';
+export type JobKind = 'booking' | 'scan' | 'reservations' | 'occupancy' | 'login' | 'cancel';
 
 export interface Job {
   id: string;

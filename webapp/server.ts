@@ -9,10 +9,10 @@ import http from 'http';
 import fs from 'fs';
 import path from 'path';
 import { URL } from 'url';
-import { WEBAPP_DIR, RUN_LOGS, loadMeta, loadMyRes, loadOccupancy, openMillisFor } from '../src/config.ts';
+import { WEBAPP_DIR, RUN_LOGS, BASE_URL, loadMeta, loadMyRes, loadOccupancy, openMillisFor } from '../src/config.ts';
 import { AMENITIES } from '../src/amenities.ts';
 import { jobs, getActiveId, isJobAlive, killJob, spawnJob } from './jobs.ts';
-import { queue, setQueue, saveQueue, tickQueue, scheduleScans, spawnReservations, spawnOccupancy } from './queue.ts';
+import { queue, setQueue, saveQueue, tickQueue, scheduleScans, spawnReservations, spawnOccupancy, spawnCancel } from './queue.ts';
 import { deriveStatus, getSession, setSession } from './status.ts';
 
 const PORT = Number(process.env.PORT) || 3000;
@@ -62,7 +62,7 @@ const server = http.createServer(async (req, res) => {
 
   if (p === '/api/amenities' && req.method === 'GET') {
     const meta = loadMeta();
-    return send(res, 200, { amenities: AMENITIES.map((a) => ({ ...a, meta: meta[a.id] || null })) });
+    return send(res, 200, { baseUrl: BASE_URL, amenities: AMENITIES.map((a) => ({ ...a, meta: meta[a.id] || null })) });
   }
 
   if (p === '/api/state' && req.method === 'GET') {
@@ -77,6 +77,13 @@ const server = http.createServer(async (req, res) => {
   if (p === '/api/reservations/mine' && req.method === 'GET') return send(res, 200, loadMyRes());
   if (p === '/api/reservations/refresh' && req.method === 'POST') {
     const r = spawnReservations();
+    return send(res, 'error' in r ? 409 : 200, r);
+  }
+  if (p === '/api/reservations/cancel' && req.method === 'POST') {
+    const b = await readBody(req);
+    if (!b.id) return send(res, 400, { error: 'reservation id required' });
+    const label = [b.amenity, b.date, b.start].filter(Boolean).join(' ') || String(b.id);
+    const r = spawnCancel(String(b.id), label, { amenityName: b.amenity, date: b.date, start: b.start });
     return send(res, 'error' in r ? 409 : 200, r);
   }
   if (p === '/api/occupancy' && req.method === 'GET') {

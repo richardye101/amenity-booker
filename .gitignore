@@ -6,4 +6,6 @@ capture/
 webapp/jobs.json
 webapp/session-status.json
 webapp/queue.json
+webapp/my-reservations.json
+webapp/occupancy-*.json
 .env

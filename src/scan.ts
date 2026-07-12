@@ -208,6 +208,31 @@ function parseStart(dateStr: string | null, timeStr: string | null): number | nu
   return new Date(y, Number(mo) - 1, Number(d), h, Number(tm[2]), 0, 0).getTime();
 }
 
+// Scrape the My Reservations grid into structured rows (shared by scan + cancel).
+// editId comes from each row's "View/Edit" link (EditReservation.aspx?id=NNN) —
+// it's the handle we cancel by.
+async function readReservations(p: import('playwright').Page) {
+  const rows = await p.evaluate(() => {
+    const t = document.getElementById('ctl00_ContentPlaceHolder1_ReservationsGrid_ctl00') as HTMLTableElement | null;
+    if (!t) return [] as { amenity: string; details: string; status: string; editId: string | null }[];
+    return [...t.rows].slice(1).map((r) => {
+      const link = r.querySelector('a[href*="EditReservation.aspx"]') as HTMLAnchorElement | null;
+      const editId = link ? (link.getAttribute('href') || '').match(/[?&]id=(\d+)/i)?.[1] || null : null;
+      return {
+        amenity: (r.cells[0]?.innerText || '').replace(/\s+/g, ' ').trim(),
+        details: (r.cells[1]?.innerText || '').replace(/\s+/g, ' ').trim(),
+        status: (r.cells[2]?.innerText || '').replace(/\s+/g, ' ').trim(),
+        editId,
+      };
+    }).filter((r) => r.amenity);
+  });
+  return rows.map((r) => {
+    const m = r.details.match(/Duration:\s*[A-Za-z]*\s*(\d{1,2}\/\d{1,2}\/\d{2,4})\s+(\d{1,2}:\d{2}\s*[AP]M)\s+to\s+(\d{1,2}:\d{2}\s*[AP]M)/i);
+    const date = m ? m[1] : null, start = m ? m[2] : null, end = m ? m[3] : null;
+    return { amenity: r.amenity, status: r.status, date, start, end, editId: r.editId, startsAt: parseStart(date, start) };
+  }).sort((a, b) => (a.startsAt || 0) - (b.startsAt || 0));
+}
+
 async function scanReservations(): Promise<void> {
   await withBrowser({ headless: process.env.HEADLESS === '1', viewport: { width: 1400, height: 950 }, defaultTimeout: 30000 }, async (p) => {
     try {
@@ -216,22 +241,7 @@ async function scanReservations(): Promise<void> {
       if (onAuth(p.url())) { await autoLogin(p, console.log); await p.goto(RES_URL, { waitUntil: 'domcontentloaded' }); await p.waitForTimeout(1500); }
       if (onAuth(p.url())) throw new Error('not signed in (auto-login failed / no creds)');
 
-      const rows = await p.evaluate(() => {
-        const t = document.getElementById('ctl00_ContentPlaceHolder1_ReservationsGrid_ctl00') as HTMLTableElement | null;
-        if (!t) return [] as { amenity: string; details: string; status: string }[];
-        return [...t.rows].slice(1).map((r) => ({
-          amenity: (r.cells[0]?.innerText || '').replace(/\s+/g, ' ').trim(),
-          details: (r.cells[1]?.innerText || '').replace(/\s+/g, ' ').trim(),
-          status: (r.cells[2]?.innerText || '').replace(/\s+/g, ' ').trim(),
-        })).filter((r) => r.amenity);
-      });
-
-      const reservations = rows.map((r) => {
-        const m = r.details.match(/Duration:\s*[A-Za-z]*\s*(\d{1,2}\/\d{1,2}\/\d{2,4})\s+(\d{1,2}:\d{2}\s*[AP]M)\s+to\s+(\d{1,2}:\d{2}\s*[AP]M)/i);
-        const date = m ? m[1] : null, start = m ? m[2] : null, end = m ? m[3] : null;
-        return { amenity: r.amenity, status: r.status, date, start, end, startsAt: parseStart(date, start) };
-      }).sort((a, b) => (a.startsAt || 0) - (b.startsAt || 0));
-
+      const reservations = await readReservations(p);
       writeJson(MY_RES_FILE, { updatedAt: new Date().toISOString(), reservations });
       console.log('MY_RESERVATIONS ' + reservations.length);
     } catch (e) {
@@ -243,13 +253,72 @@ async function scanReservations(): Promise<void> {
   });
 }
 
+// ---- cancel ----------------------------------------------------------------
+// Cancel one reservation by its edit id (the id in the row's EditReservation.aspx
+// link). BuildingLink's flow: open the edit page, click "Edit" to enter edit mode
+// (that reveals the cancel button), then click "Cancel Reservation" and accept the
+// confirm. Env: CANCEL_ID (required), plus CANCEL_LABEL for logging. Rewrites
+// my-reservations.json on exit so the panel reflects the change.
+const EDIT_URL = (id: string) => `${BASE_URL}/V2/Tenant/Amenities/EditReservation.aspx?id=${id}&from=2`;
+
+async function cancelReservation(): Promise<void> {
+  const ID = process.env.CANCEL_ID || '';
+  const LABEL = process.env.CANCEL_LABEL || ID;
+  const result = { cancelled: false, message: '' };
+  await withBrowser({ headless: process.env.HEADLESS === '1', viewport: { width: 1400, height: 950 }, defaultTimeout: 30000 }, async (p) => {
+    p.on('dialog', (d) => { console.log('confirm dialog: ' + d.message()); d.accept().catch(() => {}); });   // accept "are you sure?"
+    try {
+      if (!ID) throw new Error('missing reservation id to cancel');
+      const goEdit = async () => { await p.goto(EDIT_URL(ID), { waitUntil: 'domcontentloaded' }).catch(() => {}); await p.waitForTimeout(1500); };
+      await goEdit();
+      if (onAuth(p.url())) { await autoLogin(p, console.log); await goEdit(); }
+      if (onAuth(p.url())) throw new Error('not signed in (auto-login failed / no creds)');
+
+      // Enter edit mode — the Cancel Reservation button only renders after this.
+      const editSel = '#ctl00_ContentPlaceHolder1_HeaderEditButton, #ctl00_ContentPlaceHolder1_FooterEditButton';
+      if (!(await p.locator(editSel).count().catch(() => 0))) throw new Error('no Edit button — reservation not editable (past or already cancelled?)');
+      await p.locator(editSel).first().click().catch(() => {});
+      await p.waitForTimeout(2500);   // RadAjax swaps the content panel in
+
+      const cancelSel = '#ctl00_ContentPlaceHolder1_FooterCancelReservationButton, #ctl00_ContentPlaceHolder1_HeaderCancelReservationButton';
+      if (!(await p.locator(cancelSel).count().catch(() => 0))) throw new Error('Cancel Reservation button did not appear after Edit');
+      console.log('clicking Cancel Reservation for ' + LABEL);
+      await Promise.all([p.waitForLoadState('domcontentloaded').catch(() => {}), p.locator(cancelSel).first().click().catch(() => {})]);
+      await p.waitForTimeout(2500);
+
+      // Verify + refresh: reload My Reservations and confirm this id is gone.
+      // The grid can lag a beat after the cancel postback, so poll a few times
+      // before concluding it failed.
+      let reservations: Awaited<ReturnType<typeof readReservations>> = [];
+      let stillThere = true;
+      for (let attempt = 0; attempt < 4 && stillThere; attempt++) {
+        await p.goto(RES_URL, { waitUntil: 'domcontentloaded' }); await p.waitForTimeout(1500);
+        if (onAuth(p.url())) { await autoLogin(p, console.log); continue; }
+        reservations = await readReservations(p);
+        stillThere = reservations.some((r) => r.editId === ID);
+      }
+      writeJson(MY_RES_FILE, { updatedAt: new Date().toISOString(), reservations });
+      result.cancelled = !stillThere;
+      result.message = stillThere ? `still present after cancel — check the site (${LABEL})` : `cancelled ${LABEL}`;
+    } catch (e) {
+      result.message = String((e as Error).message || e);
+      console.log('ERROR ' + result.message);
+      process.exitCode = 1;
+    } finally {
+      console.log('CANCEL_RESULT ' + JSON.stringify(result));
+      await p.waitForTimeout(300);
+    }
+  });
+}
+
 // ---- dispatch --------------------------------------------------------------
 async function main(): Promise<void> {
   const mode = process.argv[2] || process.env.SCAN_MODE || 'availability';
   if (mode === 'availability') return scanAvailability();
   if (mode === 'occupancy') return scanOccupancy();
   if (mode === 'reservations') return scanReservations();
-  console.error(`unknown scan mode: ${mode} (expected availability|occupancy|reservations)`);
+  if (mode === 'cancel') return cancelReservation();
+  console.error(`unknown scan mode: ${mode} (expected availability|occupancy|reservations|cancel)`);
   process.exit(2);
 }
 
