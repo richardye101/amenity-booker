@@ -91,7 +91,7 @@ async function ensureDateSelected(page: Page): Promise<void> {
   if (onLogin(page.url())) throw new Error('session expired (login redirect)');
   await page.waitForSelector(IDS.agreeCheckbox, { timeout: 20000 }).catch(() => {});
   await Promise.all([
-    page.waitForLoadState('networkidle').catch(() => {}),
+    page.waitForLoadState('domcontentloaded').catch(() => {}),
     page.locator(dateCellSel).first().click(),
   ]);
   await page.waitForTimeout(700);
@@ -142,7 +142,7 @@ async function fillAndSave(page: Page, slot: Slot): Promise<ReserveResult> {
 
   log(`${slot.label}: clicking Save...`);
   await Promise.all([
-    page.waitForLoadState('networkidle').catch(() => {}),
+    page.waitForLoadState('domcontentloaded').catch(() => {}),
     page.locator(IDS.footerSave).click(),
   ]);
   await page.waitForTimeout(3000);
@@ -237,7 +237,7 @@ async function run(): Promise<void> {
 
     // Select the date, then try PRIMARY; if it fails, reload + try FALLBACK.
     await Promise.all([
-      page.waitForLoadState('networkidle').catch(() => {}),
+      page.waitForLoadState('domcontentloaded').catch(() => {}),
       page.locator(dateCellSel).first().click(),
     ]);
     await page.waitForTimeout(700);
