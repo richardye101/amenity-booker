@@ -12,7 +12,7 @@
   .wrap { max-width:1180px; margin:0 auto; padding:24px 18px 60px; }
   .grid2 { display:grid; grid-template-columns: 2fr 1fr; gap:16px; align-items:start; }
   .col-main, .col-side { min-width:0; }
-  @media (max-width: 900px){ .grid2 { grid-template-columns:1fr; } }
+  @media (max-width: 900px){ .grid2 { grid-template-columns:1fr; } .col-side { order:-1; } }
   .cardhead { display:flex; align-items:center; justify-content:space-between; gap:12px; }
   .cardhead h2 { margin:0; }
   h1 { font-size:22px; margin:0 0 4px; }
