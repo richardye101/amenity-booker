@@ -205,21 +205,22 @@ function fmtTime(hhmm){ let [h,m]=hhmm.split(':').map(Number); const ap=h<12?'AM
 const toHHMM = (min)=>`${String(Math.floor(min/60)).padStart(2,'0')}:${String(min%60).padStart(2,'0')}`;
 const toMin = (hhmm)=>{ const [h,m]=hhmm.split(':').map(Number); return h*60+m; };
 function addMin(hhmm, mins){ let t=((toMin(hhmm)+mins)%1440+1440)%1440; return toHHMM(t); }
-// Fill a select with 30-min marks in [fromMin, toMin] inclusive, skipping any
-// mark for which blocked(min) is true (used to hide already-taken slots).
-function fillTimes(sel, fromMin, toMin, blocked){ sel.innerHTML=''; for(let t=fromMin;t<=toMin;t+=30){ if(blocked && blocked(t)) continue; const hh=toHHMM(t%1440); const o=document.createElement('option'); o.value=hh; o.textContent=fmtTime(hh); sel.appendChild(o); } }
+// Fill a select with marks every `step` min in [fromMin, toMin] inclusive,
+// skipping any mark for which blocked(min) is true (hides already-taken slots).
+function fillTimes(sel, fromMin, toMin, blocked, step){ sel.innerHTML=''; step=step||30; for(let t=fromMin;t<=toMin;t+=step){ if(blocked && blocked(t)) continue; const hh=toHHMM(t%1440); const o=document.createElement('option'); o.value=hh; o.textContent=fmtTime(hh); sel.appendChild(o); } }
 
-// Parse "7:00 AM to 9:00 PM" -> {startMin,endMin}. Returns null for overnight /
-// wrap-past-midnight windows (the booking engine only books a single day) so
-// those fall back to an unconstrained 24h picker.
+// Parse "7:00 AM to 9:00 PM" -> {startMin,endMin}. A close that lands at/before
+// the open (e.g. "6:00 AM to 12:00 AM (on the following day)") means the window
+// runs to midnight — cap it at 1440 rather than bailing to an unconstrained
+// 24h picker.
 function parseWindow(meta){
   if(!meta || !meta.hours) return null;
   const m = meta.hours.match(/(\d{1,2}):(\d{2})\s*([AP]M)\s+to\s+(\d{1,2}):(\d{2})\s*([AP]M)/i);
   if(!m) return null;
   const to24=(h,ap)=>{ h=Number(h)%12; if(/pm/i.test(ap)) h+=12; return h; };
   const startMin = to24(m[1],m[3])*60 + Number(m[2]);
-  const endMin   = to24(m[4],m[6])*60 + Number(m[5]);
-  if(/following day/i.test(meta.hours) || endMin <= startMin) return null; // overnight — don't constrain
+  let endMin     = to24(m[4],m[6])*60 + Number(m[5]);
+  if(/following day/i.test(meta.hours) || endMin <= startMin) endMin = 1440; // runs to midnight
   return { startMin, endMin };
 }
 // Already-taken slots for the selected booking amenity+date (from cached
@@ -252,14 +253,16 @@ function setEndFromStart(startSel, endSel, winEnd){
 // because it pulls cached occupancy. Called on amenity/date change and on load.
 async function applyTimeWindow(){
   await loadBusy();
-  const w = parseWindow(selectedMeta());
+  const meta = selectedMeta();
+  const w = parseWindow(meta);
+  const step = (meta && meta.stepMin) || 30;       // per-amenity granularity (hour/half/quarter)
   const lo = w ? w.startMin : 0, hi = w ? w.endMin : 1410;
-  const startBlocked = t => slotBusy(t, 30);       // 30-min slot starting at t
-  const endBlocked   = t => slotBusy(t-30, 30);    // 30-min slot ending at t
-  fillTimes($('start'), lo, Math.max(lo, hi-30), startBlocked);
-  fillTimes($('end'),   Math.min(hi, lo+30), hi, endBlocked);
-  fillTimes($('fbStart'), lo, Math.max(lo, hi-30), startBlocked);
-  fillTimes($('fbEnd'),   Math.min(hi, lo+30), hi, endBlocked);
+  const startBlocked = t => slotBusy(t, step);     // slot starting at t
+  const endBlocked   = t => slotBusy(t-step, step);// slot ending at t
+  fillTimes($('start'), lo, Math.max(lo, hi-step), startBlocked, step);
+  fillTimes($('end'),   Math.min(hi, lo+step), hi, endBlocked, step);
+  fillTimes($('fbStart'), lo, Math.max(lo, hi-step), startBlocked, step);
+  fillTimes($('fbEnd'),   Math.min(hi, lo+step), hi, endBlocked, step);
   const full = $('start').options.length===0;
   const setPair = (sSel,eSel)=>{ if(!sSel.options.length) return; sSel.selectedIndex=0; setEndFromStart(sSel,eSel,hi); };
   setPair($('start'), $('end'));
