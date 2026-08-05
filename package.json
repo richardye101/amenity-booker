@@ -16,7 +16,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "playwright": "^1.61.1"
+    "playwright": "1.61.1"
   },
   "devDependencies": {
     "typescript": "^5.7.0",
