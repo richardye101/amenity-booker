@@ -100,17 +100,13 @@ async function ensureDateSelected(page: Page): Promise<void> {
 // Fill times + waiver, verify, and Save. Returns {booked, message}.
 async function fillAndSave(page: Page, slot: Slot): Promise<ReserveResult> {
   log(`${slot.label}: setting times ${slot.startTime}-${slot.endTime}`);
-  await page.evaluate(
-    ({ sid, eid, Y, MO, D, sH, eH }) => {
-      try {
-        const s = (window as any).$find && (window as any).$find(sid);
-        const e = (window as any).$find && (window as any).$find(eid);
-        if (s && s.set_selectedDate) s.set_selectedDate(new Date(Y, MO, D, sH, 0, 0));
-        if (e && e.set_selectedDate) e.set_selectedDate(new Date(Y, MO, D, eH, 0, 0));
-      } catch { /* ignore */ }
-    },
-    { sid: IDS.startTimePicker, eid: IDS.endTimePicker, Y: CFG.Y, MO: CFG.MO, D: CFG.D, sH: slot.startH, eH: slot.endH }
-  );
+  // NB: do NOT set these via the Telerik widget's set_selectedDate — under
+  // Playwright's strict-mode evaluate it throws (MS AJAX touches
+  // arguments.callee) AFTER visually setting the start box but WITHOUT a
+  // committed postback. That fools the "already correct?" check below into
+  // skipping the real fill, and the end fill's postback then resets start to
+  // the amenity's opening time (the 9AM/7AM/6AM bug). Fill start first, let its
+  // postback settle, then fill end.
   const readV = async () => ({
     start: await page.locator(IDS.startTimeInput).inputValue().catch(() => ''),
     end: await page.locator(IDS.endTimeInput).inputValue().catch(() => ''),
