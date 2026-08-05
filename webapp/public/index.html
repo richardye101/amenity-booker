@@ -432,7 +432,7 @@ function jobCard(j){
      </div>
      <div style="margin-top:8px">${title}<br><span class="muted">fire: ${c.fire||''} · started ${when}</span></div>
      ${res?`<div style="margin-top:8px;font-weight:600">${res}</div>`:''}
-     <pre>${(j.logTail||'').replace(/</g,'&lt;')}</pre>
+     <pre id="log-${j.id}">${(j.logTail||'').replace(/</g,'&lt;')}</pre>
    </div>`;
 }
 
@@ -448,7 +448,12 @@ async function refresh(){
     const show = jobs.filter(j=>j.kind==='booking');
     ['login','scan','reservations','occupancy','cancel'].forEach(k=>{ const j=jobs.find(x=>x.kind===k); if(j) show.push(j); });
     show.sort((a,b)=>(b.startedAt||'').localeCompare(a.startedAt||''));
-    $('status').innerHTML = show.length ? show.map(jobCard).join('') : '<span class="muted">No activity yet.</span>';
+    // Preserve each log's scroll position across the 2.5s re-render so you can
+    // scroll back through a log without it snapping to the top.
+    const st = $('status'), scroll = {};
+    st.querySelectorAll('pre[id^="log-"]').forEach(p=>{ scroll[p.id] = [p.scrollTop, p.scrollLeft]; });
+    st.innerHTML = show.length ? show.map(jobCard).join('') : '<span class="muted">No activity yet.</span>';
+    st.querySelectorAll('pre[id^="log-"]').forEach(p=>{ const s=scroll[p.id]; if(s){ p.scrollTop=s[0]; p.scrollLeft=s[1]; } });
   }catch(e){ /* ignore transient */ }
 }
 loadAmenities();
