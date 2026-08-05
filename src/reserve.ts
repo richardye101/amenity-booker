@@ -111,19 +111,23 @@ async function fillAndSave(page: Page, slot: Slot): Promise<ReserveResult> {
     start: await page.locator(IDS.startTimeInput).inputValue().catch(() => ''),
     end: await page.locator(IDS.endTimeInput).inputValue().catch(() => ''),
   });
+  const setField = async (input: string, want: string): Promise<void> => {
+    await page.locator(input).click();
+    await page.locator(input).fill(want).catch(() => {});
+    await page.locator(input).press('Enter').catch(() => {});
+    await page.waitForTimeout(500);
+  };
+  // Fill start, then end, re-reading between (filling one fires a postback that
+  // can reset the other). Retry the pair until both read back correct or we give
+  // up after 3 rounds — the verify gate below still blocks a wrong Save either way.
   let v = await readV();
-  if (norm(v.start) !== norm(slot.startTime)) {
-    await page.locator(IDS.startTimeInput).click();
-    await page.locator(IDS.startTimeInput).fill(slot.startTime).catch(() => {});
-    await page.locator(IDS.startTimeInput).press('Enter').catch(() => {});
-    await page.waitForTimeout(500);
-  }
-  v = await readV();
-  if (norm(v.end) !== norm(slot.endTime)) {
-    await page.locator(IDS.endTimeInput).click();
-    await page.locator(IDS.endTimeInput).fill(slot.endTime).catch(() => {});
-    await page.locator(IDS.endTimeInput).press('Enter').catch(() => {});
-    await page.waitForTimeout(500);
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    if (norm(v.start) !== norm(slot.startTime)) await setField(IDS.startTimeInput, slot.startTime);
+    v = await readV();
+    if (norm(v.end) !== norm(slot.endTime)) await setField(IDS.endTimeInput, slot.endTime);
+    v = await readV();
+    if (norm(v.start) === norm(slot.startTime) && norm(v.end) === norm(slot.endTime)) break;
+    log(`${slot.label}: fields not settled (attempt ${attempt}) start="${v.start}" end="${v.end}"`);
   }
   await page.locator(IDS.agreeCheckbox).check({ force: true });
   v = await readV();
