@@ -94,7 +94,7 @@ async function ensureDateSelected(page: Page): Promise<void> {
     page.waitForLoadState('domcontentloaded').catch(() => {}),
     page.locator(dateCellSel).first().click(),
   ]);
-  await page.waitForTimeout(700);
+  await page.locator(IDS.startTimeInput).waitFor({ state: 'visible', timeout: 5000 }).catch(() => {});
 }
 
 // Fill times + waiver, verify, and Save. Returns {booked, message}.
@@ -111,20 +111,36 @@ async function fillAndSave(page: Page, slot: Slot): Promise<ReserveResult> {
     start: await page.locator(IDS.startTimeInput).inputValue().catch(() => ''),
     end: await page.locator(IDS.endTimeInput).inputValue().catch(() => ''),
   });
-  const setField = async (input: string, want: string): Promise<void> => {
+  const fill = async (input: string, want: string): Promise<void> => {
     await page.locator(input).click();
     await page.locator(input).fill(want).catch(() => {});
     await page.locator(input).press('Enter').catch(() => {});
-    await page.waitForTimeout(500);
   };
-  // Fill start, then end, re-reading between (filling one fires a postback that
-  // can reset the other). Retry the pair until both read back correct or we give
-  // up after 3 rounds — the verify gate below still blocks a wrong Save either way.
+  // Poll cond() every 60ms until true or timeout — condition-based instead of a
+  // fixed sleep, so we proceed the instant the postback lands (usually well
+  // under the old 500ms) but still wait it out when the server is slow.
+  const waitUntil = async (cond: () => Promise<boolean>, ms: number): Promise<boolean> => {
+    const deadline = Date.now() + ms;
+    do { if (await cond().catch(() => false)) return true; await sleep(60); } while (Date.now() < deadline);
+    return false;
+  };
+  // Fill start first; its postback rewrites the end field, so wait until start
+  // reads back correct AND end has moved (postback committed) before touching
+  // end — filling end before start commits is what let the postback reset start
+  // to the opening time (the 9AM/7AM/6AM bug). Retry the pair up to 3×; the
+  // verify gate below still blocks a wrong Save either way.
   let v = await readV();
   for (let attempt = 1; attempt <= 3; attempt++) {
-    if (norm(v.start) !== norm(slot.startTime)) await setField(IDS.startTimeInput, slot.startTime);
+    if (norm(v.start) !== norm(slot.startTime)) {
+      const endBefore = v.end;
+      await fill(IDS.startTimeInput, slot.startTime);
+      await waitUntil(async () => { const r = await readV(); return norm(r.start) === norm(slot.startTime) && r.end !== endBefore; }, 3000);
+    }
     v = await readV();
-    if (norm(v.end) !== norm(slot.endTime)) await setField(IDS.endTimeInput, slot.endTime);
+    if (norm(v.end) !== norm(slot.endTime)) {
+      await fill(IDS.endTimeInput, slot.endTime);
+      await waitUntil(async () => norm((await readV()).end) === norm(slot.endTime), 3000);
+    }
     v = await readV();
     if (norm(v.start) === norm(slot.startTime) && norm(v.end) === norm(slot.endTime)) break;
     log(`${slot.label}: fields not settled (attempt ${attempt}) start="${v.start}" end="${v.end}"`);
@@ -231,7 +247,7 @@ async function run(): Promise<void> {
         log(`reload #${n}: "${CFG.targetTitle}" bookable (+${Date.now() - CFG.fireAt}ms).`);
         break;
       }
-      await sleep(250);
+      await sleep(120);
     }
     if (!ready) throw new Error(`"${CFG.targetTitle}" never became bookable within 45s`);
 
@@ -240,7 +256,8 @@ async function run(): Promise<void> {
       page.waitForLoadState('domcontentloaded').catch(() => {}),
       page.locator(dateCellSel).first().click(),
     ]);
-    await page.waitForTimeout(700);
+    // Proceed the moment the time picker is ready instead of a fixed 700ms.
+    await page.locator(IDS.startTimeInput).waitFor({ state: 'visible', timeout: 5000 }).catch(() => {});
 
     let r = await fillAndSave(page, PRIMARY);
     log('PRIMARY result: ' + r.message);
