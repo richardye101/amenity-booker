@@ -161,7 +161,13 @@ async function fillAndSave(page: Page, slot: Slot): Promise<ReserveResult> {
     page.waitForLoadState('domcontentloaded').catch(() => {}),
     page.locator(IDS.footerSave).click(),
   ]);
-  await page.waitForTimeout(3000);
+  // Resolve the moment the outcome is known instead of a fixed 3s: success
+  // redirects OFF the form, failure re-renders the error inline. Bounded at 6s.
+  await waitUntil(async () => {
+    if (!/NewReservation\.aspx/i.test(page.url())) return true; // redirected = booked
+    const bt = await page.locator('body').innerText().catch(() => '');
+    return /correct the following error|does not allow|allocation limit|overlap|not available/i.test(bt);
+  }, 6000);
   await shot(page, `${slot.startH}-after-save`);
   const url = page.url();
   // Real UI save: success redirects OFF NewReservation.aspx (to CalendarView).
