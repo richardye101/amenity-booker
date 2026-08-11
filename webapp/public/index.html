@@ -266,15 +266,23 @@ async function applyTimeWindow(){
   const full = $('start').options.length===0;
   const setPair = (sSel,eSel)=>{ if(!sSel.options.length) return; sSel.selectedIndex=0; setEndFromStart(sSel,eSel,hi); };
   setPair($('start'), $('end'));
-  // fallback defaults to the slot after the primary, if one is available.
-  if($('fbStart').options.length){ const after=[...$('fbStart').options].find(o=>toMin(o.value)>=toMin($('start').value||'0:0')); $('fbStart').value=(after||$('fbStart').options[0]).value; setEndFromStart($('fbStart'),$('fbEnd'),hi); }
+  defaultFallbackNext();
   AVAIL_FULL = full;
   $('armBtn').disabled = full;
   updateInfo();
 }
+// Default the fallback to the NEXT slot after the primary (starts where the
+// primary ends), snapped to an available option. Tracks the primary start.
+function defaultFallbackNext(){
+  const fb=$('fbStart'); if(!fb.options.length) return;
+  const w=parseWindow(selectedMeta()); const hi=w?w.endMin:1440;
+  const after=[...fb.options].find(o=>toMin(o.value)>=toMin($('end').value||'0:0'));
+  fb.value=(after||fb.options[fb.options.length-1]).value;
+  setEndFromStart(fb,$('fbEnd'),hi);
+}
 applyTimeWindow();
 // default duration = 1 hour: end follows start, snapped to available options.
-$('start').onchange = ()=>{ const w=parseWindow(selectedMeta()); setEndFromStart($('start'),$('end'), w?w.endMin:1440); };
+$('start').onchange = ()=>{ const w=parseWindow(selectedMeta()); setEndFromStart($('start'),$('end'), w?w.endMin:1440); defaultFallbackNext(); };
 $('fbStart').onchange = ()=>{ const w=parseWindow(selectedMeta()); setEndFromStart($('fbStart'),$('fbEnd'), w?w.endMin:1440); };
 
 // default date = tomorrow
