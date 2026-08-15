@@ -56,6 +56,11 @@ const FALLBACK: Slot = {
   endH: parseInt(process.env.FB_END_H || '11', 10),
 };
 
+// PARALLEL>1 races N tabs for the same slot at fire (first to commit wins;
+// a losing tab may also commit under BuildingLink's own race — self-double-book
+// is accepted). Defaults to 1 (single attempt, unchanged behavior).
+const PARALLEL = Math.max(1, parseInt(process.env.PARALLEL || '1', 10));
+
 const IDS = {
   startTimePicker: 'ctl00_ContentPlaceHolder1_StartTimePicker',
   endTimePicker: 'ctl00_ContentPlaceHolder1_EndTimePicker',
@@ -98,8 +103,9 @@ async function ensureDateSelected(page: Page): Promise<void> {
 }
 
 // Fill times + waiver, verify, and Save. Returns {booked, message}.
-async function fillAndSave(page: Page, slot: Slot): Promise<ReserveResult> {
-  log(`${slot.label}: setting times ${slot.startTime}-${slot.endTime}`);
+async function fillAndSave(page: Page, slot: Slot, tag = ''): Promise<ReserveResult> {
+  const L = tag ? `${tag} ` : '';
+  log(`${L}${slot.label}: setting times ${slot.startTime}-${slot.endTime}`);
   // NB: do NOT set these via the Telerik widget's set_selectedDate — under
   // Playwright's strict-mode evaluate it throws (MS AJAX touches
   // arguments.callee) AFTER visually setting the start box but WITHOUT a
@@ -143,20 +149,20 @@ async function fillAndSave(page: Page, slot: Slot): Promise<ReserveResult> {
     }
     v = await readV();
     if (norm(v.start) === norm(slot.startTime) && norm(v.end) === norm(slot.endTime)) break;
-    log(`${slot.label}: fields not settled (attempt ${attempt}) start="${v.start}" end="${v.end}"`);
+    log(`${L}${slot.label}: fields not settled (attempt ${attempt}) start="${v.start}" end="${v.end}"`);
   }
   await page.locator(IDS.agreeCheckbox).check({ force: true });
   v = await readV();
   const checked = await page.locator(IDS.agreeCheckbox).isChecked().catch(() => false);
   const startOK = norm(v.start) === norm(slot.startTime);
   const endOK = norm(v.end) === norm(slot.endTime);
-  log(`${slot.label}: VERIFY start="${v.start}"(${startOK}) end="${v.end}"(${endOK}) agreed=${checked}`);
-  await shot(page, `${slot.startH}-filled`);
+  log(`${L}${slot.label}: VERIFY start="${v.start}"(${startOK}) end="${v.end}"(${endOK}) agreed=${checked}`);
+  await shot(page, `${tag}${slot.startH}-filled`);
   if (!startOK || !endOK || !checked) return { booked: false, message: `verify failed for ${slot.label}` };
 
   if (CFG.dryRun) return { booked: true, message: `DRY RUN ${slot.label} (not saved)` };
 
-  log(`${slot.label}: clicking Save...`);
+  log(`${L}${slot.label}: clicking Save...`);
   await Promise.all([
     page.waitForLoadState('domcontentloaded').catch(() => {}),
     page.locator(IDS.footerSave).click(),
@@ -168,13 +174,54 @@ async function fillAndSave(page: Page, slot: Slot): Promise<ReserveResult> {
   // condition-based shortcuts here read mid-postback and false-negatived
   // genuine bookings. Do NOT trim it.
   await page.waitForTimeout(4000);
-  await shot(page, `${slot.startH}-after-save`);
+  await shot(page, `${tag}${slot.startH}-after-save`);
   const url = page.url();
   const booked = !/NewReservation\.aspx/i.test(url);
   const bodyText = await page.locator('body').innerText().catch(() => '');
   const errSnip = (bodyText.match(/correct the following error\(s\):([\s\S]{0,160})/i) || ['', ''])[1].replace(/\s+/g, ' ').trim();
-  log(`${slot.label}: after-save url=${url} booked=${booked} error="${errSnip}"`);
+  log(`${L}${slot.label}: after-save url=${url} booked=${booked} error="${errSnip}"`);
   return { booked, message: booked ? `BOOKED ${slot.label}` : `NOT booked ${slot.label}: ${errSnip || 'stayed on form'}` };
+}
+
+// One independent booking attempt on its own tab: reload-poll until the target
+// date is bookable, select it, then PRIMARY (and FALLBACK if it fails). Several
+// of these run concurrently when PARALLEL>1. `tag` distinguishes their logs.
+async function fireAndBook(page: Page, tag: string): Promise<ReserveResult> {
+  const L = tag ? `${tag} ` : '';
+  const fireDeadline = Date.now() + 45000;
+  let ready = false, n = 0;
+  while (Date.now() < fireDeadline) {
+    n++;
+    await page.goto(RES_URL, { waitUntil: 'domcontentloaded' }).catch(() => {});
+    if (onLogin(page.url())) {
+      await autoLogin(page, log);
+      await page.goto(RES_URL, { waitUntil: 'domcontentloaded' }).catch(() => {});
+      if (onLogin(page.url())) throw new Error('login redirect during fire (auto-login failed / no creds)');
+    }
+    if ((await page.locator(dateCellSel).first().count().catch(() => 0)) > 0) {
+      ready = true;
+      log(`${L}reload #${n}: "${CFG.targetTitle}" bookable (+${Date.now() - CFG.fireAt}ms).`);
+      break;
+    }
+    await sleep(120);
+  }
+  if (!ready) throw new Error(`"${CFG.targetTitle}" never became bookable within 45s`);
+
+  await Promise.all([
+    page.waitForLoadState('domcontentloaded').catch(() => {}),
+    page.locator(dateCellSel).first().click(),
+  ]);
+  await page.locator(IDS.startTimeInput).waitFor({ state: 'visible', timeout: 5000 }).catch(() => {});
+
+  let r = await fillAndSave(page, PRIMARY, tag);
+  log(`${L}PRIMARY result: ` + r.message);
+  if (!r.booked) {
+    log(`${L}primary did not book; trying fallback slot...`);
+    await ensureDateSelected(page);
+    r = await fillAndSave(page, FALLBACK, tag);
+    log(`${L}FALLBACK result: ` + r.message);
+  }
+  return r;
 }
 
 async function run(): Promise<void> {
@@ -233,47 +280,35 @@ async function run(): Promise<void> {
         if (onLogin(page.url())) throw new Error('session expired just before fire (auto-login failed / no creds)');
       }
     }
+    // Prewarm extra tabs for parallel attempts — they share the context's live
+    // session cookies, so no re-login is needed. Done before fire so all tabs
+    // are ready to race the instant the slot opens.
+    const pages: Page[] = [page];
+    for (let i = 1; i < PARALLEL; i++) {
+      const p = await ctx.newPage();
+      p.setDefaultTimeout(30000);
+      await p.goto(RES_URL, { waitUntil: 'domcontentloaded' }).catch(() => {});
+      await p.waitForSelector(IDS.agreeCheckbox, { timeout: 20000 }).catch(() => {});
+      pages.push(p);
+    }
+    if (PARALLEL > 1) log(`prewarmed ${PARALLEL} parallel tabs.`);
+
     while (Date.now() < CFG.fireAt) await sleep(20);
-    log('FIRE. reloading until target date is bookable...');
+    log(`FIRE${PARALLEL > 1 ? ` (${PARALLEL}× parallel)` : ''}. reloading until target date is bookable...`);
 
-    // FIRE: rapid reload-poll until the target date is bookable
-    const fireDeadline = Date.now() + 45000;
-    let ready = false, n = 0;
-    while (Date.now() < fireDeadline) {
-      n++;
-      await page.goto(RES_URL, { waitUntil: 'domcontentloaded' }).catch(() => {});
-      if (onLogin(page.url())) {
-        await autoLogin(page, log);
-        await page.goto(RES_URL, { waitUntil: 'domcontentloaded' }).catch(() => {});
-        if (onLogin(page.url())) throw new Error('login redirect during fire (auto-login failed / no creds)');
-      }
-      if ((await page.locator(dateCellSel).first().count().catch(() => 0)) > 0) {
-        ready = true;
-        log(`reload #${n}: "${CFG.targetTitle}" bookable (+${Date.now() - CFG.fireAt}ms).`);
-        break;
-      }
-      await sleep(120);
+    // Race every tab; first to book wins. A losing tab may also commit under
+    // BuildingLink's own overlap race — self-double-book is accepted.
+    const outcomes = await Promise.allSettled(pages.map((p, i) => fireAndBook(p, PARALLEL > 1 ? `[a${i + 1}]` : '')));
+    const won = outcomes.find((o) => o.status === 'fulfilled' && (o.value as ReserveResult).booked) as PromiseFulfilledResult<ReserveResult> | undefined;
+    if (won) {
+      result.booked = true;
+      result.message = won.value.message;
+    } else {
+      const any = outcomes.find((o) => o.status === 'fulfilled') as PromiseFulfilledResult<ReserveResult> | undefined;
+      const rej = outcomes.find((o) => o.status === 'rejected') as PromiseRejectedResult | undefined;
+      result.booked = false;
+      result.message = any ? any.value.message : String(rej?.reason?.message || rej?.reason || 'all attempts failed');
     }
-    if (!ready) throw new Error(`"${CFG.targetTitle}" never became bookable within 45s`);
-
-    // Select the date, then try PRIMARY; if it fails, reload + try FALLBACK.
-    await Promise.all([
-      page.waitForLoadState('domcontentloaded').catch(() => {}),
-      page.locator(dateCellSel).first().click(),
-    ]);
-    // Proceed the moment the time picker is ready instead of a fixed 700ms.
-    await page.locator(IDS.startTimeInput).waitFor({ state: 'visible', timeout: 5000 }).catch(() => {});
-
-    let r = await fillAndSave(page, PRIMARY);
-    log('PRIMARY result: ' + r.message);
-    if (!r.booked) {
-      log('primary did not book; trying fallback slot...');
-      await ensureDateSelected(page);
-      r = await fillAndSave(page, FALLBACK);
-      log('FALLBACK result: ' + r.message);
-    }
-    result.booked = r.booked;
-    result.message = r.message;
   } catch (err) {
     result.message = String(err && (err as Error).message ? (err as Error).message : err);
     log('ERROR: ' + result.message);
