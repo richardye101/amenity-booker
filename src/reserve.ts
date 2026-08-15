@@ -161,19 +161,18 @@ async function fillAndSave(page: Page, slot: Slot): Promise<ReserveResult> {
     page.waitForLoadState('domcontentloaded').catch(() => {}),
     page.locator(IDS.footerSave).click(),
   ]);
-  // Resolve the moment the outcome is known instead of a fixed 3s: success
-  // redirects OFF the form, failure re-renders the error inline. Bounded at 6s.
-  await waitUntil(async () => {
-    if (!/NewReservation\.aspx/i.test(page.url())) return true; // redirected = booked
-    const bt = await page.locator('body').innerText().catch(() => '');
-    return /correct the following error|does not allow|allocation limit|overlap|not available/i.test(bt);
-  }, 6000);
+  // Fixed settle before judging. A successful Save does a full redirect OFF
+  // NewReservation.aspx (to the calendar), but the redirect can lag the click
+  // by a couple seconds under load — read too early and a real booking looks
+  // like it "stayed on form". This 4s wait is the proven-reliable behavior;
+  // condition-based shortcuts here read mid-postback and false-negatived
+  // genuine bookings. Do NOT trim it.
+  await page.waitForTimeout(4000);
   await shot(page, `${slot.startH}-after-save`);
   const url = page.url();
-  // Real UI save: success redirects OFF NewReservation.aspx (to CalendarView).
   const booked = !/NewReservation\.aspx/i.test(url);
   const bodyText = await page.locator('body').innerText().catch(() => '');
-  const errSnip = (bodyText.match(/Please correct the following error\(s\):([\s\S]{0,160})/i) || ['', ''])[1].replace(/\s+/g, ' ').trim();
+  const errSnip = (bodyText.match(/correct the following error\(s\):([\s\S]{0,160})/i) || ['', ''])[1].replace(/\s+/g, ' ').trim();
   log(`${slot.label}: after-save url=${url} booked=${booked} error="${errSnip}"`);
   return { booked, message: booked ? `BOOKED ${slot.label}` : `NOT booked ${slot.label}: ${errSnip || 'stayed on form'}` };
 }
