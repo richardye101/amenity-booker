@@ -7,6 +7,8 @@ Wants=network-online.target
 Type=simple
 WorkingDirectory=__REPO__
 Environment=PORT=3000
+# Every booking races this many tabs for the slot at fire (first to commit wins).
+Environment=PARALLEL=3
 # Booking fire times are computed in local time; BuildingLink opens slots in the
 # building's zone. Set it explicitly so the server's UTC clock doesn't fire hours
 # off (2026-07-05: midnight fired at midnight UTC = 8pm EDT). Override if needed.
