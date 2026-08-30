@@ -82,9 +82,10 @@
     <div class="card">
       <div class="cardhead"><h2>Amenity availability</h2><button class="sec" id="occBtn" onclick="checkOccupancy()">Check</button></div>
       <div style="margin-top:10px"><label>Amenity</label><select id="occAmenity"></select></div>
-      <div class="row" style="margin-top:10px">
-        <div><label>From (optional)</label><input type="date" id="occFrom" /></div>
-        <div><label>To (optional)</label><input type="date" id="occTo" /></div>
+      <div class="chk" style="margin-top:10px"><input type="checkbox" id="occRangeOn" /><label for="occRangeOn">Custom date range</label></div>
+      <div class="row" id="occRangeRow" style="display:none;margin-top:8px">
+        <div><label>From</label><input type="date" id="occFrom" /></div>
+        <div><label>To</label><input type="date" id="occTo" /></div>
       </div>
       <div id="occInfo" class="hint" style="margin-top:8px"></div>
       <div id="occList" style="margin-top:10px"><span class="muted">Pick an amenity and click Check to see what's already booked.</span></div>
@@ -201,6 +202,7 @@ function updateInfo(){
   } else oi.textContent = '';
 }
 $('fbOn').onchange = ()=>{ $('fbRow').style.display = $('fbOn').checked ? '' : 'none'; };
+$('occRangeOn').onchange = ()=>{ $('occRangeRow').style.display = $('occRangeOn').checked ? '' : 'none'; };
 $('fireMode').onchange = ()=>{ $('fireAtWrap').style.display = $('fireMode').value==='at' ? '' : 'none'; updateInfo(); };
 $('date').onchange = ()=>{ applyTimeWindow(); };
 
@@ -371,8 +373,9 @@ async function loadOcc(){
 async function checkOccupancy(){
   const a = AMS.find(x=>x.id===$('occAmenity').value);
   if(!a){ banner('Pick a known amenity to check availability','err'); return; }
-  const from = $('occFrom').value || '';
-  const to = $('occTo').value || '';
+  const useRange = $('occRangeOn').checked;
+  const from = useRange ? ($('occFrom').value || '') : '';
+  const to = useRange ? ($('occTo').value || '') : '';
   let days = occHorizonDays();
   if(to){
     const startD = from ? new Date(from+'T00:00:00') : new Date();
