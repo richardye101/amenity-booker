@@ -82,6 +82,10 @@
     <div class="card">
       <div class="cardhead"><h2>Amenity availability</h2><button class="sec" id="occBtn" onclick="checkOccupancy()">Check</button></div>
       <div style="margin-top:10px"><label>Amenity</label><select id="occAmenity"></select></div>
+      <div class="row" style="margin-top:10px">
+        <div><label>From (optional)</label><input type="date" id="occFrom" /></div>
+        <div><label>Days</label><input type="number" id="occDays" min="1" max="90" /></div>
+      </div>
       <div id="occInfo" class="hint" style="margin-top:8px"></div>
       <div id="occList" style="margin-top:10px"><span class="muted">Pick an amenity and click Check to see what's already booked.</span></div>
     </div>
@@ -347,7 +351,8 @@ function occHorizonDays(){
 function occInfoText(){
   const a = AMS.find(x=>x.id===$('occAmenity').value);
   const days = occHorizonDays();
-  $('occInfo').textContent = a ? `Showing the next ${days} day(s) — the furthest you can book ${a.name}.` : '';
+  const di=$('occDays'); if(di) di.placeholder=String(days);
+  $('occInfo').textContent = a ? `Default shows the next ${days} bookable day(s). Raise Days (up to 90) or set From to scan a specific range.` : '';
 }
 function renderOcc(data){
   const el = $('occList');
@@ -367,8 +372,10 @@ async function loadOcc(){
 async function checkOccupancy(){
   const a = AMS.find(x=>x.id===$('occAmenity').value);
   if(!a){ banner('Pick a known amenity to check availability','err'); return; }
-  try{ await api('/api/occupancy/refresh','POST',{ amenityId:a.id, amenityName:a.name, days:occHorizonDays() });
-    banner(`Checking ${a.name} availability (up to ${occHorizonDays()} days)…`,'ok'); refresh(); }
+  const days = Math.max(1, Math.min(90, parseInt($('occDays').value,10) || occHorizonDays()));
+  const from = $('occFrom').value || '';
+  try{ await api('/api/occupancy/refresh','POST',{ amenityId:a.id, amenityName:a.name, days, from });
+    banner(`Checking ${a.name} availability (${days} day(s)${from?' from '+from:''})…`,'ok'); refresh(); }
   catch(e){ banner(e.message,'err'); }
 }
 async function arm(){

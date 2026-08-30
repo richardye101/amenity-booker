@@ -25,10 +25,10 @@ export const spawnCancel = (id: string, label: string, cfg: Record<string, unkno
   env: { CANCEL_ID: String(id || ''), CANCEL_LABEL: String(label || id || '') },
   config: cfg,
 });
-export const spawnOccupancy = (amenityId: string | number, amenityName: string | undefined, days: number | undefined) => spawnJob({
+export const spawnOccupancy = (amenityId: string | number, amenityName: string | undefined, days: number | undefined, from?: string) => spawnJob({
   kind: 'occupancy', prefix: 'occ', script: 'src/scan.ts', args: ['occupancy'],
-  env: { AMENITY_ID: String(amenityId), AMENITY_NAME: String(amenityName || ''), DAYS: String(days || 14) },
-  config: { amenity: amenityId, amenityName, days },
+  env: { AMENITY_ID: String(amenityId), AMENITY_NAME: String(amenityName || ''), DAYS: String(days || 14), FROM: String(from || '') },
+  config: { amenity: amenityId, amenityName, days, from: from || null },
 });
 
 // ---- scheduled availability scan ------------------------------------------

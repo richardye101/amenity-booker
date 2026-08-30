@@ -92,7 +92,7 @@ const server = http.createServer(async (req, res) => {
   }
   if (p === '/api/occupancy/refresh' && req.method === 'POST') {
     const b = await readBody(req);
-    const r = spawnOccupancy(b.amenityId, b.amenityName, b.days);
+    const r = spawnOccupancy(b.amenityId, b.amenityName, b.days, b.from);
     return send(res, 'error' in r ? 409 : 200, r);
   }
 

@@ -119,7 +119,9 @@ const DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 async function scanOccupancy(): Promise<void> {
   const ID = process.env.AMENITY_ID || '29916';
   const NAME = process.env.AMENITY_NAME || 'Tennis Court';
-  const DAYS = Math.max(1, Math.min(31, parseInt(process.env.DAYS || '14', 10)));
+  const DAYS = Math.max(1, Math.min(90, parseInt(process.env.DAYS || '14', 10)));
+  // Optional start date (YYYY-MM-DD) for a specific range; defaults to today.
+  const FROM = process.env.FROM && /^\d{4}-\d{2}-\d{2}$/.test(process.env.FROM) ? process.env.FROM : '';
   const OUT = occupancyFile(ID);
   // lowercase path avoids the V2->v2 redirect that can interrupt goto in a loop
   const GRID = `${BASE_URL}/v2/tenant/amenities/availabilitygrid.aspx`;
@@ -127,9 +129,9 @@ async function scanOccupancy(): Promise<void> {
   await withBrowser({ headless: process.env.HEADLESS === '1', viewport: { width: 1600, height: 1000 }, defaultTimeout: 30000 }, async (p) => {
     const days: unknown[] = [];
     try {
-      const today = new Date();
+      const start = FROM ? new Date(FROM + 'T00:00:00') : new Date();
       for (let i = 0; i < DAYS; i++) {
-        const d = new Date(today.getFullYear(), today.getMonth(), today.getDate() + i);
+        const d = new Date(start.getFullYear(), start.getMonth(), start.getDate() + i);
         const url = `${GRID}?selectedDate=${encodeURIComponent(mdy(d))}`;
         const goDay = async () => { await p.goto(url, { waitUntil: 'domcontentloaded' }).catch(() => {}); await p.waitForLoadState('domcontentloaded').catch(() => {}); };
         await goDay();
