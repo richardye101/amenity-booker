@@ -8,7 +8,7 @@
 <style>
   :root { --bg:#0f1720; --card:#18232f; --ink:#e6edf3; --mut:#8aa0b3; --acc:#2ea043; --accf:#238636; --warn:#d29922; --err:#f85149; --line:#26333f; }
   * { box-sizing: border-box; }
-  body { margin:0; font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; background:var(--bg); color:var(--ink); }
+  body { margin:0; font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; background:var(--bg); color:var(--ink); color-scheme: dark; }
   .wrap { max-width:1180px; margin:0 auto; padding:24px 18px 60px; }
   .grid2 { display:grid; grid-template-columns: 2fr 1fr; gap:16px; align-items:start; }
   .col-main, .col-side { min-width:0; }
@@ -20,7 +20,9 @@
   .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:18px; margin-bottom:16px; }
   .card h2 { font-size:14px; text-transform:uppercase; letter-spacing:.06em; color:var(--mut); margin:0 0 14px; }
   label { display:block; font-size:13px; color:var(--mut); margin:0 0 5px; }
-  input, select { width:100%; padding:9px 10px; background:#0d151d; border:1px solid var(--line); border-radius:8px; color:var(--ink); font-size:14px; }
+  input, select { width:100%; padding:9px 10px; background:#0d151d; border:1px solid var(--line); border-radius:8px; color:var(--ink); font-size:14px; color-scheme: dark; }
+  input[type=date] { min-height:38px; -webkit-appearance:none; appearance:none; }
+  input[type=date]:in-range::-webkit-datetime-edit, input[type=date]::-webkit-datetime-edit { color:var(--ink); }
   .row { display:flex; gap:12px; flex-wrap:wrap; }
   .row > div { flex:1; min-width:130px; }
   .chk { display:flex; align-items:center; gap:8px; margin:2px 0; }
