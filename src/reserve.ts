@@ -91,6 +91,18 @@ const dateCellSel = `td[title*="${CFG.targetTitle}"] a`;
 const onLogin = (url: string) => /auth\.buildinglink\.com/i.test(url);
 const onResPage = (url: string) => /NewReservation\.aspx/i.test(new URL(url).pathname);
 
+// MS-AJAX partial postbacks (date click, start-time blur) re-render both time
+// pickers from the server when they land. Typing before one lands gets
+// overwritten by its response: the date postback defaults the pickers to the
+// first free slot of the day, which at midnight is the opening slot — the
+// 7AM/8AM/9AM bug (2026-10-02, probed). Always wait for the page to go idle.
+const prmBusy = (page: Page) => page.evaluate(() => !!(window as any).Sys?.WebForms?.PageRequestManager?.getInstance?.()?.get_isInAsyncPostBack()).catch(() => false);
+async function prmIdle(page: Page, ms: number): Promise<boolean> {
+  const deadline = Date.now() + ms;
+  while (await prmBusy(page)) { if (Date.now() > deadline) return false; await sleep(40); }
+  return true;
+}
+
 // Reload/click until the target date cell is bookable, then select it.
 async function ensureDateSelected(page: Page): Promise<void> {
   await page.goto(RES_URL, { waitUntil: 'domcontentloaded' });
@@ -101,6 +113,7 @@ async function ensureDateSelected(page: Page): Promise<void> {
     page.locator(dateCellSel).first().click(),
   ]);
   await page.locator(IDS.startTimeInput).waitFor({ state: 'visible', timeout: 5000 }).catch(() => {});
+  if (!(await prmIdle(page, 15000))) log('date postback still busy after 15s — continuing');
 }
 
 // Fill times + waiver, verify, and Save. Returns {booked, message}.
@@ -126,23 +139,16 @@ async function fillAndSave(page: Page, slot: Slot, tag = ''): Promise<ReserveRes
     do { if (await cond().catch(() => false)) return true; await sleep(60); } while (Date.now() < deadline);
     return false;
   };
-  // The pickers commit on BLUR, not Enter (probe 2026-10-02): leaving the start
-  // box fires an MS-AJAX postback that re-renders both pickers from the server
-  // (which reset 10-11 to the 7-8 opening slot when 10-11 was already taken).
-  // Tab out, then wait for that postback to finish so readV() sees the server's
-  // answer, not the text we just typed.
-  const prmBusy = () => page.evaluate(() => !!(window as any).Sys?.WebForms?.PageRequestManager?.getInstance?.()?.get_isInAsyncPostBack()).catch(() => false);
+  // The pickers commit on BLUR (not Enter/Tab); start's blur fires a postback
+  // that re-renders both pickers (end := start+1h). Wait it out before reading.
   const fill = async (input: string, want: string): Promise<void> => {
     await page.locator(input).click();
     await page.locator(input).fill(want).catch(() => {});
-    await page.locator(input).press('Tab').catch(() => {});
-    if (await waitUntil(prmBusy, 200)) await waitUntil(async () => !(await prmBusy()), 5000);
+    await page.locator(input).blur().catch(() => {});
+    if (await waitUntil(() => prmBusy(page), 200)) await prmIdle(page, 10000);
   };
-  // Fill start first; its postback rewrites the end field, so wait until start
-  // reads back correct AND end has moved (postback committed) before touching
-  // end — filling end before start commits is what let the postback reset start
-  // to the opening time (the 9AM/7AM/6AM bug). Retry the pair up to 3×; the
-  // verify gate below still blocks a wrong Save either way.
+  // Fill start (its postback rewrites end), then end. Retry the pair up to 3×;
+  // the verify gate below still blocks a wrong Save either way.
   let v = await readV();
   for (let attempt = 1; attempt <= 3; attempt++) {
     if (norm(v.start) !== norm(slot.startTime)) {
@@ -224,6 +230,7 @@ async function fireAndBook(page: Page, tag: string): Promise<ReserveResult> {
     page.locator(dateCellSel).first().click(),
   ]);
   await page.locator(IDS.startTimeInput).waitFor({ state: 'visible', timeout: 5000 }).catch(() => {});
+  if (!(await prmIdle(page, 15000))) log('date postback still busy after 15s — continuing');
 
   let r = await fillAndSave(page, PRIMARY, tag);
   log(`${L}PRIMARY result: ` + r.message);
