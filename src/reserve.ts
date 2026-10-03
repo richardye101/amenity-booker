@@ -126,20 +126,17 @@ async function fillAndSave(page: Page, slot: Slot, tag = ''): Promise<ReserveRes
     do { if (await cond().catch(() => false)) return true; await sleep(60); } while (Date.now() < deadline);
     return false;
   };
-  // Enter triggers a server postback that validates the time; if the slot is
-  // taken the server rewrites BOTH pickers to the opening slot (the 7AM bug,
-  // 2026-10-02). Wait for that round-trip + the DOM swap so every readV()
-  // below sees the server's answer, not the text we just typed.
+  // The pickers commit on BLUR, not Enter (probe 2026-10-02): leaving the start
+  // box fires an MS-AJAX postback that re-renders both pickers from the server
+  // (which reset 10-11 to the 7-8 opening slot when 10-11 was already taken).
+  // Tab out, then wait for that postback to finish so readV() sees the server's
+  // answer, not the text we just typed.
+  const prmBusy = () => page.evaluate(() => !!(window as any).Sys?.WebForms?.PageRequestManager?.getInstance?.()?.get_isInAsyncPostBack()).catch(() => false);
   const fill = async (input: string, want: string): Promise<void> => {
     await page.locator(input).click();
     await page.locator(input).fill(want).catch(() => {});
-    const postback = page.waitForResponse((r) => r.request().method() === 'POST' && onResPage(r.url()), { timeout: 5000 }).catch(() => null);
-    await page.locator(input).press('Enter').catch(() => {});
-    await postback;
-    await waitUntil(() => page.evaluate(() => {
-      const prm = (window as any).Sys?.WebForms?.PageRequestManager?.getInstance?.();
-      return !prm || !prm.get_isInAsyncPostBack();
-    }), 2000);
+    await page.locator(input).press('Tab').catch(() => {});
+    if (await waitUntil(prmBusy, 200)) await waitUntil(async () => !(await prmBusy()), 5000);
   };
   // Fill start first; its postback rewrites the end field, so wait until start
   // reads back correct AND end has moved (postback committed) before touching
@@ -149,9 +146,8 @@ async function fillAndSave(page: Page, slot: Slot, tag = ''): Promise<ReserveRes
   let v = await readV();
   for (let attempt = 1; attempt <= 3; attempt++) {
     if (norm(v.start) !== norm(slot.startTime)) {
-      const endBefore = v.end;
       await fill(IDS.startTimeInput, slot.startTime);
-      await waitUntil(async () => { const r = await readV(); return norm(r.start) === norm(slot.startTime) && r.end !== endBefore; }, 1000);
+      await waitUntil(async () => norm((await readV()).start) === norm(slot.startTime), 1000);
     }
     v = await readV();
     if (norm(v.end) !== norm(slot.endTime)) {
