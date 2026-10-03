@@ -117,11 +117,6 @@ async function fillAndSave(page: Page, slot: Slot, tag = ''): Promise<ReserveRes
     start: await page.locator(IDS.startTimeInput).inputValue().catch(() => ''),
     end: await page.locator(IDS.endTimeInput).inputValue().catch(() => ''),
   });
-  const fill = async (input: string, want: string): Promise<void> => {
-    await page.locator(input).click();
-    await page.locator(input).fill(want).catch(() => {});
-    await page.locator(input).press('Enter').catch(() => {});
-  };
   // Poll cond() every 60ms until true or timeout — condition-based instead of a
   // fixed sleep, so we proceed the instant the postback lands (usually well
   // under the old 500ms) but still wait it out when the server is slow.
@@ -129,6 +124,21 @@ async function fillAndSave(page: Page, slot: Slot, tag = ''): Promise<ReserveRes
     const deadline = Date.now() + ms;
     do { if (await cond().catch(() => false)) return true; await sleep(60); } while (Date.now() < deadline);
     return false;
+  };
+  // Enter triggers a server postback that validates the time; if the slot is
+  // taken the server rewrites BOTH pickers to the opening slot (the 7AM bug,
+  // 2026-10-02). Wait for that round-trip + the DOM swap so every readV()
+  // below sees the server's answer, not the text we just typed.
+  const fill = async (input: string, want: string): Promise<void> => {
+    await page.locator(input).click();
+    await page.locator(input).fill(want).catch(() => {});
+    const postback = page.waitForResponse((r) => r.request().method() === 'POST' && onResPage(r.url()), { timeout: 5000 }).catch(() => null);
+    await page.locator(input).press('Enter').catch(() => {});
+    await postback;
+    await waitUntil(() => page.evaluate(() => {
+      const prm = (window as any).Sys?.WebForms?.PageRequestManager?.getInstance?.();
+      return !prm || !prm.get_isInAsyncPostBack();
+    }), 2000);
   };
   // Fill start first; its postback rewrites the end field, so wait until start
   // reads back correct AND end has moved (postback committed) before touching
@@ -140,12 +150,12 @@ async function fillAndSave(page: Page, slot: Slot, tag = ''): Promise<ReserveRes
     if (norm(v.start) !== norm(slot.startTime)) {
       const endBefore = v.end;
       await fill(IDS.startTimeInput, slot.startTime);
-      await waitUntil(async () => { const r = await readV(); return norm(r.start) === norm(slot.startTime) && r.end !== endBefore; }, 3000);
+      await waitUntil(async () => { const r = await readV(); return norm(r.start) === norm(slot.startTime) && r.end !== endBefore; }, 1000);
     }
     v = await readV();
     if (norm(v.end) !== norm(slot.endTime)) {
       await fill(IDS.endTimeInput, slot.endTime);
-      await waitUntil(async () => norm((await readV()).end) === norm(slot.endTime), 3000);
+      await waitUntil(async () => norm((await readV()).end) === norm(slot.endTime), 1000);
     }
     v = await readV();
     if (norm(v.start) === norm(slot.startTime) && norm(v.end) === norm(slot.endTime)) break;
@@ -157,11 +167,18 @@ async function fillAndSave(page: Page, slot: Slot, tag = ''): Promise<ReserveRes
   const startOK = norm(v.start) === norm(slot.startTime);
   const endOK = norm(v.end) === norm(slot.endTime);
   log(`${L}${slot.label}: VERIFY start="${v.start}"(${startOK}) end="${v.end}"(${endOK}) agreed=${checked}`);
-  await shot(page, `${tag}${slot.startH}-filled`);
+  // ponytail: viewport-only — the fullPage shot of the waiver page cost ~4s/tab at fire.
+  await page.screenshot({ path: path.join(LOG_DIR, `${runTag}-${tag}${slot.startH}-filled.png`) }).catch(() => {});
   if (!startOK || !endOK || !checked) return { booked: false, message: `verify failed for ${slot.label}` };
 
   if (CFG.dryRun) return { booked: true, message: `DRY RUN ${slot.label} (not saved)` };
 
+  // Last look right before the click: a late postback can still reset the fields.
+  v = await readV();
+  if (norm(v.start) !== norm(slot.startTime) || norm(v.end) !== norm(slot.endTime)) {
+    log(`${L}${slot.label}: fields changed before Save start="${v.start}" end="${v.end}" — not saving`);
+    return { booked: false, message: `fields reset before Save for ${slot.label}` };
+  }
   log(`${L}${slot.label}: clicking Save...`);
   await Promise.all([
     page.waitForLoadState('domcontentloaded').catch(() => {}),
