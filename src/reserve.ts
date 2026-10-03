@@ -82,7 +82,8 @@ function log(msg: string): void {
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 async function shot(page: Page, name: string): Promise<void> {
   const p = path.join(LOG_DIR, `${runTag}-${name}.png`);
-  await page.screenshot({ path: p, fullPage: true }).catch(() => {});
+  // ponytail: viewport-only. fullPage of the 2500px waiver page cost ~4s per tab at fire.
+  await page.screenshot({ path: p }).catch(() => {});
   log(`screenshot: ${p}`);
 }
 const norm = (s: string) => (s || '').replace(/\s+/g, '').toLowerCase();
@@ -167,8 +168,6 @@ async function fillAndSave(page: Page, slot: Slot, tag = ''): Promise<ReserveRes
   const startOK = norm(v.start) === norm(slot.startTime);
   const endOK = norm(v.end) === norm(slot.endTime);
   log(`${L}${slot.label}: VERIFY start="${v.start}"(${startOK}) end="${v.end}"(${endOK}) agreed=${checked}`);
-  // ponytail: viewport-only — the fullPage shot of the waiver page cost ~4s/tab at fire.
-  await page.screenshot({ path: path.join(LOG_DIR, `${runTag}-${tag}${slot.startH}-filled.png`) }).catch(() => {});
   if (!startOK || !endOK || !checked) return { booked: false, message: `verify failed for ${slot.label}` };
 
   if (CFG.dryRun) return { booked: true, message: `DRY RUN ${slot.label} (not saved)` };
