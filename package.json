@@ -8,6 +8,7 @@
     "start": "node webapp/server.ts",
     "panel": "node webapp/server.ts",
     "typecheck": "tsc --noEmit",
+    "test": "node --test src/*.test.ts",
     "login": "node src/login.ts",
     "map-amenities": "node src/map-amenities.ts",
     "scan": "node src/scan.ts availability"

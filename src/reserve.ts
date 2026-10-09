@@ -103,19 +103,6 @@ async function prmIdle(page: Page, ms: number): Promise<boolean> {
   return true;
 }
 
-// Reload/click until the target date cell is bookable, then select it.
-async function ensureDateSelected(page: Page): Promise<void> {
-  await page.goto(RES_URL, { waitUntil: 'domcontentloaded' });
-  if (onLogin(page.url())) throw new Error('session expired (login redirect)');
-  await page.waitForSelector(IDS.agreeCheckbox, { timeout: 20000 }).catch(() => {});
-  await Promise.all([
-    page.waitForLoadState('domcontentloaded').catch(() => {}),
-    page.locator(dateCellSel).first().click(),
-  ]);
-  await page.locator(IDS.startTimeInput).waitFor({ state: 'visible', timeout: 5000 }).catch(() => {});
-  if (!(await prmIdle(page, 15000))) log('date postback still busy after 15s — continuing');
-}
-
 // Fill times + waiver, verify, and Save. Returns {booked, message}.
 async function fillAndSave(page: Page, slot: Slot, tag = ''): Promise<ReserveResult> {
   const L = tag ? `${tag} ` : '';
@@ -204,7 +191,7 @@ async function fillAndSave(page: Page, slot: Slot, tag = ''): Promise<ReserveRes
 // One independent booking attempt on its own tab: reload-poll until the target
 // date is bookable, select it, then PRIMARY (and FALLBACK if it fails). Several
 // of these run concurrently when PARALLEL>1. `tag` distinguishes their logs.
-async function fireAndBook(page: Page, tag: string): Promise<ReserveResult> {
+export async function fireAndBook(page: Page, tag: string): Promise<ReserveResult> {
   const L = tag ? `${tag} ` : '';
   const fireDeadline = Date.now() + 45000;
   let ready = false, n = 0;
@@ -236,7 +223,7 @@ async function fireAndBook(page: Page, tag: string): Promise<ReserveResult> {
   log(`${L}PRIMARY result: ` + r.message);
   if (!r.booked) {
     log(`${L}primary did not book; trying fallback slot...`);
-    await ensureDateSelected(page);
+    // A rejected Save keeps the selected date; reloading needlessly repeats date setup.
     r = await fillAndSave(page, FALLBACK, tag);
     log(`${L}FALLBACK result: ` + r.message);
   }
